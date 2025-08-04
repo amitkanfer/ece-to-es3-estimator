@@ -243,7 +243,7 @@
     </div>
 
     <script>
-        const ELASTIC_ENDPOINT = 'https://overview-elastic-cloud-com.es.us-east-1.aws.found.io';
+        const PROXY_ENDPOINT = 'https://ece-to-es3-estimator.vercel.app/api/elastic-proxy';
         
         document.getElementById('fetchBtn').addEventListener('click', async function() {
             // Immediate feedback
@@ -325,8 +325,11 @@
                 addProgress(`Headers configured with ApiKey authentication`);
                 addProgress(`Making POST request...`);
 
-                // Make the API call
-                const response = await fetch(`${ELASTIC_ENDPOINT}/logging-*:elasticsearch-2*/_search`, {
+                // Make the API call through CORS proxy
+                const proxyUrl = `${CORS_PROXY}${ELASTIC_ENDPOINT}/logging-*:elasticsearch-2*/_search`;
+                addProgress(`Using CORS proxy: ${proxyUrl}`);
+                
+                const response = await fetch(proxyUrl, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
