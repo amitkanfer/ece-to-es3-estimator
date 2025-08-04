@@ -315,27 +315,19 @@
                 };
 
                 addProgress(`Search query created: ${JSON.stringify(searchQuery, null, 2)}`);
+                addProgress(`Making request via proxy: ${PROXY_ENDPOINT}`);
 
-                // Set up headers with correct ApiKey format
-                const headers = {
-                    'Content-Type': 'application/json',
-                    'Authorization': `ApiKey ${apiKey.substring(0, 10)}...` // Only show first 10 chars for security
-                };
-                
-                addProgress(`Headers configured with ApiKey authentication`);
-                addProgress(`Making POST request...`);
-
-                // Make the API call through CORS proxy
-                const proxyUrl = `${CORS_PROXY}${ELASTIC_ENDPOINT}/logging-*:elasticsearch-2*/_search`;
-                addProgress(`Using CORS proxy: ${proxyUrl}`);
-                
-                const response = await fetch(proxyUrl, {
+                // Make the API call through your Vercel proxy
+                const response = await fetch(PROXY_ENDPOINT, {
                     method: 'POST',
                     headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `ApiKey ${apiKey}` // Use full key for actual request
+                        'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify(searchQuery)
+                    body: JSON.stringify({
+                        clusterId: clusterId,
+                        apiKey: apiKey,
+                        query: searchQuery
+                    })
                 });
 
                 addProgress(`Response received with status: ${response.status} ${response.statusText}`);
@@ -369,10 +361,10 @@
                 addProgress(`Error stack: ${error.stack}`, 'error');
                 
                 if (error.message.includes('CORS') || error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
-                    addProgress(`This appears to be a CORS (Cross-Origin Resource Sharing) issue. The browser is blocking the request to the Elastic Cloud endpoint.`, 'error');
-                    addProgress(`Possible solutions: 1) Run from a server instead of file://, 2) Use a proxy, 3) Enable CORS on the Elastic endpoint`, 'error');
+                    addProgress(`This appears to be a CORS (Cross-Origin Resource Sharing) issue. The browser is blocking the request.`, 'error');
+                    addProgress(`Possible solutions: 1) Check if proxy is deployed correctly, 2) Verify proxy URL is correct`, 'error');
                 } else if (error.message.includes('NetworkError') || error.message.includes('Failed to fetch')) {
-                    addProgress(`Network connectivity issue. Check if the endpoint is reachable and not blocked by firewall.`, 'error');
+                    addProgress(`Network connectivity issue. Check if the proxy endpoint is reachable.`, 'error');
                 }
             } finally {
                 fetchBtn.disabled = false;
@@ -384,7 +376,7 @@
         function displayResults(hits) {
             const resultsContent = document.getElementById('resultsContent');
             
-            let html = '';
+            let html = resultsContent.innerHTML; // Keep the progress log
             
             hits.forEach((hit, index) => {
                 const source = hit._source;
