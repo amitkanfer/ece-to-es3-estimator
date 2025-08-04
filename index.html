@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hosted to ES3 Estimator</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Taurus, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            font-weight: 300;
+        }
+
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+
+        .content {
+            padding: 40px;
+        }
+
+        .form-section {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
+            border: 1px solid #e0e6ed;
+        }
+
+        .form-group {
+            margin-bottom: 25px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #2d3748;
+            font-size: 0.95rem;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid #e2e8f0;
+            border-radius: 10px;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+            background: #fafafa;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: #667eea;
+            background: white;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 10px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            min-width: 150px;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .results-section {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            margin-top: 30px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
+            border: 1px solid #e0e6ed;
+            display: none;
+        }
+
+        .results-section.show {
+            display: block;
+            animation: slideIn 0.5s ease;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .section-title {
+            font-size: 1.5rem;
+            color: #2d3748;
+            margin-bottom: 20px;
+            font-weight: 600;
+        }
+
+        .metadata-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .metadata-card {
+            background: #f7fafc;
+            border-radius: 10px;
+            padding: 20px;
+            border-left: 4px solid #667eea;
+        }
+
+        .metadata-card h4 {
+            color: #2d3748;
+            margin-bottom: 10px;
+            font-size: 1.1rem;
+        }
+
+        .metadata-card p {
+            color: #4a5568;
+            margin-bottom: 8px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #667eea;
+        }
+
+        .loading::after {
+            content: '';
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #667eea;
+            border-radius: 50%;
+            border-top-color: transparent;
+            animation: spin 1s linear infinite;
+            margin-left: 10px;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .error {
+            background: #fed7d7;
+            color: #c53030;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            border-left: 4px solid #e53e3e;
+        }
+
+        .success {
+            background: #c6f6d5;
+            color: #22543d;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            border-left: 4px solid #38a169;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Hosted to ES3 Estimator</h1>
+            <p>Analyze your current Elastic deployment and estimate ES3 serverless costs</p>
+        </div>
+
+        <div class="content">
+            <div class="form-section">
+                <div class="error" style="margin-bottom: 20px;">
+                    <strong>⚠️ Deployment Required</strong><br>
+                    This app needs to be deployed to work properly due to Content Security Policy restrictions in Claude.ai.<br><br>
+                    <strong>Quick deployment options:</strong><br>
+                    1. <strong>GitHub Pages:</strong> Create a repo, upload this HTML file, enable Pages<br>
+                    2. <strong>Local:</strong> Save as .html file and open in your browser<br>
+                    3. <strong>Any web server:</strong> Upload to your hosting provider
+                </div>
+                
+                <h2 class="section-title">Cluster Connection</h2>
+                <div id="clusterInputs">
+                    <div class="form-group">
+                        <label for="clusterId">Cluster ID</label>
+                        <input type="text" id="clusterId" name="clusterId" placeholder="Enter your cluster ID" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="apiKey">API Key</label>
+                        <input type="password" id="apiKey" name="apiKey" placeholder="Enter your API key" required>
+                    </div>
+                    <button type="button" class="btn" id="fetchBtn">Fetch Cluster Data</button>
+                </div>
+            </div>
+
+            <div id="results" class="results-section">
+                <h2 class="section-title">Cluster Environment Information</h2>
+                <div id="resultsContent"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const ELASTIC_ENDPOINT = 'https://overview-elastic-cloud-com.es.us-east-1.aws.found.io';
+        
+        document.getElementById('fetchBtn').addEventListener('click', async function() {
+            // Immediate feedback
+            console.log('Button clicked!');
+            
+            const clusterId = document.getElementById('clusterId').value.trim();
+            const apiKey = document.getElementById('apiKey').value.trim();
+            
+            if (!clusterId || !apiKey) {
+                alert('Please provide both Cluster ID and API Key');
+                showError('Please provide both Cluster ID and API Key');
+                return;
+            }
+            
+            console.log('Starting fetch with:', clusterId, apiKey.substring(0, 10) + '...');
+            await fetchClusterData(clusterId, apiKey);
+        });
+
+        async function fetchClusterData(clusterId, apiKey) {
+            const fetchBtn = document.getElementById('fetchBtn');
+            const resultsSection = document.getElementById('results');
+            const resultsContent = document.getElementById('resultsContent');
+            
+            // Show loading state
+            fetchBtn.disabled = true;
+            fetchBtn.textContent = 'Fetching Data...';
+            resultsSection.classList.add('show');
+            
+            // Initialize progress display
+            let progressHtml = '<h3>Progress Log:</h3><div id="progressLog"></div><hr style="margin: 20px 0;">';
+            resultsContent.innerHTML = progressHtml;
+            
+            function addProgress(message, type = 'info') {
+                const progressLog = document.getElementById('progressLog');
+                const timestamp = new Date().toLocaleTimeString();
+                const colorClass = type === 'error' ? 'error' : type === 'success' ? 'success' : '';
+                progressLog.innerHTML += `<div class="progress-item ${colorClass}" style="margin: 10px 0; padding: 10px; border-left: 3px solid ${type === 'error' ? '#e53e3e' : type === 'success' ? '#38a169' : '#667eea'}; background: ${type === 'error' ? '#fed7d7' : type === 'success' ? '#c6f6d5' : '#f7fafc'};">
+                    <strong>[${timestamp}]</strong> ${message}
+                </div>`;
+                progressLog.scrollTop = progressLog.scrollHeight;
+            }
+            
+            try {
+                addProgress(`Starting request for Cluster ID: ${clusterId}`);
+                addProgress(`Target endpoint: ${ELASTIC_ENDPOINT}/logging-*:elasticsearch-2*/_search`);
+                
+                // Create the search query
+                const searchQuery = {
+                    query: {
+                        bool: {
+                            must: [
+                                {
+                                    term: {
+                                        "ece.cluster": clusterId
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    size: 10,
+                    sort: [
+                        {
+                            "@timestamp": {
+                                order: "desc"
+                            }
+                        }
+                    ],
+                    _source: ["environment.*", "@timestamp", "cluster_uuid"]
+                };
+
+                addProgress(`Search query created: ${JSON.stringify(searchQuery, null, 2)}`);
+
+                // Set up headers with correct ApiKey format
+                const headers = {
+                    'Content-Type': 'application/json',
+                    'Authorization': `ApiKey ${apiKey.substring(0, 10)}...` // Only show first 10 chars for security
+                };
+                
+                addProgress(`Headers configured with ApiKey authentication`);
+                addProgress(`Making POST request...`);
+
+                // Make the API call
+                const response = await fetch(`${ELASTIC_ENDPOINT}/logging-*:elasticsearch-2*/_search`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `ApiKey ${apiKey}` // Use full key for actual request
+                    },
+                    body: JSON.stringify(searchQuery)
+                });
+
+                addProgress(`Response received with status: ${response.status} ${response.statusText}`);
+                
+                // Show response headers
+                const responseHeaders = [...response.headers.entries()];
+                addProgress(`Response headers: ${JSON.stringify(Object.fromEntries(responseHeaders), null, 2)}`);
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    addProgress(`Error response body: ${errorText}`, 'error');
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}\n${errorText}`);
+                }
+
+                addProgress(`Parsing JSON response...`);
+                const data = await response.json();
+                addProgress(`Response parsed successfully. Total hits: ${data.hits?.total?.value || 'unknown'}`);
+                
+                if (data.hits && data.hits.hits && data.hits.hits.length > 0) {
+                    addProgress(`Found ${data.hits.hits.length} records`, 'success');
+                    displayResults(data.hits.hits);
+                } else if (data.error) {
+                    addProgress(`Elasticsearch error: ${JSON.stringify(data.error, null, 2)}`, 'error');
+                } else {
+                    addProgress(`No data found for cluster ID: ${clusterId}`, 'error');
+                }
+
+            } catch (error) {
+                addProgress(`Error occurred: ${error.name}`, 'error');
+                addProgress(`Error message: ${error.message}`, 'error');
+                addProgress(`Error stack: ${error.stack}`, 'error');
+                
+                if (error.message.includes('CORS') || error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
+                    addProgress(`This appears to be a CORS (Cross-Origin Resource Sharing) issue. The browser is blocking the request to the Elastic Cloud endpoint.`, 'error');
+                    addProgress(`Possible solutions: 1) Run from a server instead of file://, 2) Use a proxy, 3) Enable CORS on the Elastic endpoint`, 'error');
+                } else if (error.message.includes('NetworkError') || error.message.includes('Failed to fetch')) {
+                    addProgress(`Network connectivity issue. Check if the endpoint is reachable and not blocked by firewall.`, 'error');
+                }
+            } finally {
+                fetchBtn.disabled = false;
+                fetchBtn.textContent = 'Fetch Cluster Data';
+                addProgress(`Request completed`);
+            }
+        }
+
+        function displayResults(hits) {
+            const resultsContent = document.getElementById('resultsContent');
+            
+            let html = '';
+            
+            hits.forEach((hit, index) => {
+                const source = hit._source;
+                const environment = source.environment || {};
+                const timestamp = source['@timestamp'];
+                
+                html += `
+                    <div class="metadata-card">
+                        <h4>Record ${index + 1} - ${new Date(timestamp).toLocaleString()}</h4>
+                `;
+                
+                // Display all environment fields
+                Object.keys(environment).forEach(key => {
+                    const value = environment[key];
+                    if (value !== undefined && value !== null) {
+                        html += `<p><strong>${key}:</strong> ${JSON.stringify(value)}</p>`;
+                    }
+                });
+                
+                if (Object.keys(environment).length === 0) {
+                    html += '<p><em>No environment data available for this record</em></p>';
+                }
+                
+                html += '</div>';
+            });
+            
+            resultsContent.innerHTML = html;
+        }
+
+        function showError(message) {
+            const resultsContent = document.getElementById('resultsContent');
+            resultsContent.innerHTML = `<div class="error">${message}</div>`;
+            document.getElementById('results').classList.add('show');
+        }
+
+        function showSuccess(message) {
+            const resultsContent = document.getElementById('resultsContent');
+            const currentContent = resultsContent.innerHTML;
+            resultsContent.innerHTML = `<div class="success">${message}</div>${currentContent}`;
+        }
+    </script>
+</body>
+</html>
