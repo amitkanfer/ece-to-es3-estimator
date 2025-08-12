@@ -47,7 +47,7 @@ A comprehensive tool for analyzing Elasticsearch clusters and estimating migrati
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/ece-to-es3-estimator.git
+git clone https://github.com/elastic/ece-to-es3-estimator.git
 cd ece-to-es3-estimator
 
 # Install dependencies
