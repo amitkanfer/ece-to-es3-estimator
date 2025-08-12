@@ -773,7 +773,8 @@ def generate_raw_text_output(data, config):
     
     # Indexing Performance
     indexing_metrics = data.get('indexing_metrics')
-    if indexing_metrics:
+    if indexing_metrics and indexing_metrics.get('cluster_stats'):
+        cluster_stats = indexing_metrics['cluster_stats']
         output.append("📈 INGEST PERFORMANCE (Last 7 days)")
         output.append("=" * 60)
         output.append("🔍 Query Configuration:")
@@ -784,14 +785,17 @@ def generate_raw_text_output(data, config):
         output.append("  └─ Calculation: Derivative to get bytes/sec rate")
         output.append("  └─ Aggregation: Max value per bucket, then sum across nodes")
         output.append("  └─ Data source: metrics-*:cluster-elasticsearch-*")
-        output.append(f"📦 Min rate: {indexing_metrics['min_rate_bytes_sec']:.2f} B/s")
-        output.append(f"📦 Max rate: {indexing_metrics['max_rate_bytes_sec']:.2f} B/s")
-        output.append(f"📦 Avg rate: {indexing_metrics['avg_rate_bytes_sec']:.2f} B/s")
-        output.append(f"📊 Data points: {indexing_metrics['data_points']} across {indexing_metrics['nodes_with_data']} nodes")
-        output.append(f"💾 Min rate: {indexing_metrics['min_rate_mb_sec']:.2f} MB/s")
-        output.append(f"💾 Max rate: {indexing_metrics['max_rate_mb_sec']:.2f} MB/s")
-        output.append(f"💾 Avg rate: {indexing_metrics['avg_rate_mb_sec']:.2f} MB/s")
-        output.append(f"📊 Avg to Peak ratio: {indexing_metrics['avg_to_peak_ratio']:.3f} ({indexing_metrics['avg_rate_mb_sec']:.2f}/{indexing_metrics['max_rate_mb_sec']:.2f})")
+        output.append(f"📦 Min rate: {cluster_stats['min_rate']:.2f} B/s")
+        output.append(f"📦 Max rate: {cluster_stats['max_rate']:.2f} B/s")
+        output.append(f"📦 Avg rate: {cluster_stats['avg_rate']:.2f} B/s")
+        output.append(f"📊 Data points: {cluster_stats['total_data_points']} across {cluster_stats['node_count']} nodes")
+        output.append(f"💾 Min rate: {cluster_stats['min_rate_mbps']:.2f} MB/s")
+        output.append(f"💾 Max rate: {cluster_stats['max_rate_mbps']:.2f} MB/s")
+        output.append(f"💾 Avg rate: {cluster_stats['avg_rate_mbps']:.2f} MB/s")
+        
+        # Calculate avg to peak ratio
+        avg_to_peak_ratio = cluster_stats['avg_rate_mbps'] / cluster_stats['max_rate_mbps'] if cluster_stats['max_rate_mbps'] > 0 else 0
+        output.append(f"📊 Avg to Peak ratio: {avg_to_peak_ratio:.3f} ({cluster_stats['avg_rate_mbps']:.2f}/{cluster_stats['max_rate_mbps']:.2f})")
         output.append("")
     else:
         output.append("❌ No bulk ingest metrics available")
@@ -799,21 +803,25 @@ def generate_raw_text_output(data, config):
     
     # Search Performance
     search_metrics = data.get('search_metrics')
-    if search_metrics:
+    if search_metrics and search_metrics.get('cluster_stats'):
+        cluster_stats = search_metrics['cluster_stats']
         output.append("🔍 SEARCH PERFORMANCE (Last 7 days)")
         output.append("=" * 60)
         output.append("🔍 Query Configuration:")
         output.append("  └─ Time range: 7 days (604,800 seconds)")
-        output.append(f"  └─ Buckets: {search_metrics['data_points']} buckets")
+        output.append(f"  └─ Buckets: {cluster_stats['total_data_points']} buckets")
         output.append("  └─ Metric: indices.search.fetch_total (cumulative count)")
         output.append("  └─ Calculation: Derivative to get queries/sec rate")
         output.append("  └─ Aggregation: Max value per bucket, then sum across nodes")
         output.append("  └─ Data source: All nodes in cluster")
-        output.append(f"🔍 Min rate: {search_metrics['min_rate_queries_sec']:.2f} queries/sec")
-        output.append(f"🔍 Max rate: {search_metrics['max_rate_queries_sec']:.2f} queries/sec")
-        output.append(f"🔍 Avg rate: {search_metrics['avg_rate_queries_sec']:.2f} queries/sec")
-        output.append(f"📊 Data points: {search_metrics['data_points']} across {search_metrics['nodes_with_data']} nodes")
-        output.append(f"📊 Avg to Peak ratio: {search_metrics['avg_to_peak_ratio']:.3f} ({search_metrics['avg_rate_queries_sec']:.2f}/{search_metrics['max_rate_queries_sec']:.2f})")
+        output.append(f"🔍 Min rate: {cluster_stats['min_rate']:.2f} queries/sec")
+        output.append(f"🔍 Max rate: {cluster_stats['max_rate']:.2f} queries/sec")
+        output.append(f"🔍 Avg rate: {cluster_stats['avg_rate']:.2f} queries/sec")
+        output.append(f"📊 Data points: {cluster_stats['total_data_points']} across {cluster_stats['node_count']} nodes")
+        
+        # Calculate avg to peak ratio
+        avg_to_peak_ratio = cluster_stats['avg_rate'] / cluster_stats['max_rate'] if cluster_stats['max_rate'] > 0 else 0
+        output.append(f"📊 Avg to Peak ratio: {avg_to_peak_ratio:.3f} ({cluster_stats['avg_rate']:.2f}/{cluster_stats['max_rate']:.2f})")
         output.append("")
     else:
         output.append("❌ No search metrics available")
@@ -821,7 +829,8 @@ def generate_raw_text_output(data, config):
     
     # CPU Utilization
     cpu_metrics = data.get('cpu_metrics')
-    if cpu_metrics:
+    if cpu_metrics and cpu_metrics.get('cluster_stats'):
+        cluster_stats = cpu_metrics['cluster_stats']
         output.append("🖥️  CPU UTILIZATION PERFORMANCE (Last 7 days)")
         output.append("=" * 60)
         output.append("🔍 Query Configuration:")
@@ -832,16 +841,19 @@ def generate_raw_text_output(data, config):
         output.append("  └─ Calculation: Average usage across nodes per time bucket")
         output.append("  └─ Aggregation: Average across nodes, then stats across time")
         output.append("  └─ Data source: logging-*:elasticsearch-2*")
-        if 'excluded_inactive_nodes' in cpu_metrics and cpu_metrics['excluded_inactive_nodes']:
-            output.append(f"  └─ Excluded inactive nodes: {', '.join(cpu_metrics['excluded_inactive_nodes'])}")
-        output.append(f"🖥️  Min usage: {cpu_metrics['min_cpu_usage']:.1f}%")
-        output.append(f"🖥️  Max usage: {cpu_metrics['max_cpu_usage']:.1f}%")
-        output.append(f"🖥️  Avg usage: {cpu_metrics['avg_cpu_usage']:.1f}%")
-        output.append(f"📊 Data points: {cpu_metrics['data_points']} across {cpu_metrics['nodes_with_data']} nodes")
-        output.append(f"📊 Avg to Peak ratio: {cpu_metrics['avg_to_peak_ratio']:.3f} ({cpu_metrics['avg_cpu_usage']:.1f}%/{cpu_metrics['max_cpu_usage']:.1f}%)")
+        if 'excluded_inactive_nodes' in cluster_stats and cluster_stats['excluded_inactive_nodes']:
+            output.append(f"  └─ Excluded inactive nodes: {', '.join(cluster_stats['excluded_inactive_nodes'])}")
+        output.append(f"🖥️  Min usage: {cluster_stats['min_usage']:.1f}%")
+        output.append(f"🖥️  Max usage: {cluster_stats['max_usage']:.1f}%")
+        output.append(f"🖥️  Avg usage: {cluster_stats['avg_usage']:.1f}%")
+        output.append(f"📊 Data points: {cluster_stats['total_data_points']} across {cluster_stats['node_count']} nodes")
+        
+        # Calculate avg to peak ratio
+        avg_to_peak_ratio = cluster_stats['avg_usage'] / cluster_stats['max_usage'] if cluster_stats['max_usage'] > 0 else 0
+        output.append(f"📊 Avg to Peak ratio: {avg_to_peak_ratio:.3f} ({cluster_stats['avg_usage']:.1f}%/{cluster_stats['max_usage']:.1f}%)")
         
         # CPU interpretation
-        avg_cpu = cpu_metrics['avg_cpu_usage']
+        avg_cpu = cluster_stats['avg_usage']
         if avg_cpu < 30:
             interpretation = "Low CPU utilization - cluster may be over-provisioned"
         elif avg_cpu < 60:
@@ -885,14 +897,22 @@ def generate_raw_text_output(data, config):
         
         # Cost calculations if available
         total_cluster_memory = data.get('total_cluster_memory')
-        if total_cluster_memory and indexing_metrics and search_metrics and cpu_metrics:
+        if (total_cluster_memory and indexing_metrics and indexing_metrics.get('cluster_stats') and 
+            search_metrics and search_metrics.get('cluster_stats') and 
+            cpu_metrics and cpu_metrics.get('cluster_stats')):
+            
             memory_gb = total_cluster_memory.get('numeric_memory_gb', 0)
-            cpu_factor = cpu_metrics['avg_cpu_usage'] / 100.0
+            cpu_factor = cpu_metrics['cluster_stats']['avg_usage'] / 100.0
             
             # Ingest tier
             output.append("💰 **INGEST TIER ESTIMATION:**")
             ingest_ratio = ingest_to_query_ratio['ratio_percentage'] / 100.0
-            avg_to_peak_ratio = indexing_metrics['avg_to_peak_ratio']
+            
+            # Calculate avg to peak ratio from indexing metrics
+            indexing_cluster_stats = indexing_metrics['cluster_stats']
+            avg_to_peak_ratio = (indexing_cluster_stats['avg_rate_mbps'] / indexing_cluster_stats['max_rate_mbps'] 
+                                if indexing_cluster_stats['max_rate_mbps'] > 0 else 0)
+            
             ingest_vcus = memory_gb * ingest_ratio * avg_to_peak_ratio * cpu_factor
             vcu_cost = config.get('vcu_hourly_cost', 0.14)
             hourly_cost = ingest_vcus * vcu_cost
@@ -908,12 +928,17 @@ def generate_raw_text_output(data, config):
             output.append(f"  └─ Hourly Cost: ${hourly_cost:.2f}")
             output.append(f"  └─ Daily Cost: ${daily_cost:.2f}")
             output.append(f"  └─ **Monthly Cost: ${monthly_cost:.2f}**")
-            output.append(f"  └─ Note: Includes CPU utilization factor based on {cpu_metrics['avg_cpu_usage']:.1f}% average CPU usage")
+            output.append(f"  └─ Note: Includes CPU utilization factor based on {cpu_metrics['cluster_stats']['avg_usage']:.1f}% average CPU usage")
             
             # Search tier
             output.append("🔍 **SEARCH TIER ESTIMATION:**")
             query_ratio = 1.0 - ingest_ratio
-            search_avg_to_peak_ratio = search_metrics['avg_to_peak_ratio']
+            
+            # Calculate avg to peak ratio from search metrics
+            search_cluster_stats = search_metrics['cluster_stats']
+            search_avg_to_peak_ratio = (search_cluster_stats['avg_rate'] / search_cluster_stats['max_rate'] 
+                                      if search_cluster_stats['max_rate'] > 0 else 0)
+            
             search_vcus = memory_gb * query_ratio * search_avg_to_peak_ratio * cpu_factor
             search_hourly_cost = search_vcus * vcu_cost
             search_daily_cost = search_hourly_cost * 24
@@ -928,7 +953,7 @@ def generate_raw_text_output(data, config):
             output.append(f"  └─ Hourly Cost: ${search_hourly_cost:.2f}")
             output.append(f"  └─ Daily Cost: ${search_daily_cost:.2f}")
             output.append(f"  └─ **Monthly Cost: ${search_monthly_cost:.2f}**")
-            output.append(f"  └─ Note: Includes CPU utilization factor based on {cpu_metrics['avg_cpu_usage']:.1f}% average CPU usage")
+            output.append(f"  └─ Note: Includes CPU utilization factor based on {cpu_metrics['cluster_stats']['avg_usage']:.1f}% average CPU usage")
             
             # Storage tier
             if stats_analysis:
@@ -1007,12 +1032,12 @@ def generate_raw_text_output(data, config):
     available_sections = []
     if stats_analysis:
         available_sections.append(f"Found cluster statistics with {stats_analysis['latest_total_docs']:,} total documents")
-    if indexing_metrics:
-        available_sections.append(f"Average indexing rate: {indexing_metrics['avg_rate_bytes_sec']:.2f} B/s over last 7 days")
-    if search_metrics:
-        available_sections.append(f"Average search rate: {search_metrics['avg_rate_queries_sec']:.2f} queries/sec over last 7 days")
-    if cpu_metrics:
-        available_sections.append(f"Average CPU utilization: {cpu_metrics['avg_cpu_usage']:.1f}% over last 7 days")
+    if indexing_metrics and indexing_metrics.get('cluster_stats'):
+        available_sections.append(f"Average indexing rate: {indexing_metrics['cluster_stats']['avg_rate']:.2f} B/s over last 7 days")
+    if search_metrics and search_metrics.get('cluster_stats'):
+        available_sections.append(f"Average search rate: {search_metrics['cluster_stats']['avg_rate']:.2f} queries/sec over last 7 days")
+    if cpu_metrics and cpu_metrics.get('cluster_stats'):
+        available_sections.append(f"Average CPU utilization: {cpu_metrics['cluster_stats']['avg_usage']:.1f}% over last 7 days")
     
     if available_sections:
         for section in available_sections:
