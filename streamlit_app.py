@@ -42,6 +42,27 @@ st.markdown("""
         color: #dc3545;
         font-weight: bold;
     }
+    /* Fix input field styling */
+    .stTextInput > div > div > input {
+        background-color: white;
+        border: 2px solid #e0e0e0;
+        border-radius: 4px;
+        padding: 8px 12px;
+        font-size: 14px;
+    }
+    .stTextInput > div > div > input:focus {
+        border-color: #1f77b4;
+        box-shadow: 0 0 0 2px rgba(31, 119, 180, 0.2);
+    }
+    /* Improve sidebar styling */
+    .css-1d391kg {
+        padding: 1rem 1rem 1rem 1rem;
+    }
+    /* Better spacing for subheaders */
+    .stSubheader {
+        margin-top: 1.5rem;
+        margin-bottom: 0.5rem;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -58,14 +79,14 @@ def main():
         st.subheader("Required Settings")
         cluster_id = st.text_input(
             "Cluster ID", 
-            placeholder="e.g., 1a86373f5628470f8841946a610855d9",
-            help="Your Elasticsearch cluster ID from Elastic Cloud"
+            value="",
+            help="Your Elasticsearch cluster ID from Elastic Cloud (e.g., 1a86373f5628470f8841946a610855d9)"
         )
         
         api_key = st.text_input(
             "API Key", 
             type="password",
-            placeholder="Enter your Elastic Cloud API key",
+            value="",
             help="API key with read access to your cluster metrics"
         )
         
@@ -112,8 +133,13 @@ def main():
     
     # Main content area
     if not run_analysis:
-        # Welcome screen
-        st.info("👈 Enter your cluster details in the sidebar and click 'Run Analysis' to get started")
+        # Welcome screen with better styling
+        st.markdown("""
+        <div style="text-align: center; padding: 2rem; background-color: #f8f9fa; border-radius: 10px; margin: 1rem 0; border: 1px solid #dee2e6;">
+            <h3 style="color: #495057; margin-bottom: 1rem;">👈 Enter your cluster details and click 'Run Analysis'</h3>
+            <p style="color: #6c757d; font-size: 1.1rem; margin-bottom: 0;">Provide your Cluster ID and API Key in the sidebar to analyze your Elasticsearch cluster</p>
+        </div>
+        """, unsafe_allow_html=True)
         
         st.markdown("## 📋 What This Tool Does:")
         col1, col2, col3 = st.columns(3)
