@@ -118,7 +118,7 @@ def main():
         )
         
         api_key = st.text_input(
-            "API Key", 
+            "Elasticsearch API Key", 
             type="password",
             value="",
             help="API key with read access to your cluster metrics"
