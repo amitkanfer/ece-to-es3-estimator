@@ -19,19 +19,77 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Minimal CSS styling - clean and professional
+# Minimal CSS styling - clean and professional with smaller fonts
 st.markdown("""
 <style>
-    /* Clean input styling */
+    /* Smaller fonts throughout */
+    .main .block-container {
+        font-size: 14px;
+    }
+    
+    /* Smaller headers */
+    h1 {
+        font-size: 1.8rem !important;
+    }
+    h2 {
+        font-size: 1.4rem !important;
+    }
+    h3 {
+        font-size: 1.2rem !important;
+    }
+    
+    /* Smaller sidebar text */
+    .css-1d391kg {
+        font-size: 13px;
+    }
+    
+    /* Smaller input fields */
     .stTextInput > div > div > input {
         border: 1px solid #d1d5db;
         border-radius: 4px;
-        padding: 8px 12px;
+        padding: 6px 10px;
+        font-size: 13px;
     }
     .stTextInput > div > div > input:focus {
         border-color: #6b7280;
         box-shadow: 0 0 0 1px #6b7280;
     }
+    
+    /* Smaller labels */
+    .stTextInput > label {
+        font-size: 13px !important;
+    }
+    
+    /* Smaller metrics */
+    [data-testid="metric-container"] {
+        font-size: 13px;
+    }
+    [data-testid="metric-container"] > div > div {
+        font-size: 1.2rem !important;
+    }
+    
+    /* Smaller buttons */
+    .stButton > button {
+        font-size: 13px;
+        padding: 6px 16px;
+    }
+    
+    /* Smaller tabs */
+    .stTabs [data-baseweb="tab-list"] button {
+        font-size: 13px;
+        padding: 8px 16px;
+    }
+    
+    /* Smaller markdown text */
+    .stMarkdown {
+        font-size: 14px;
+    }
+    
+    /* Smaller info/warning/error boxes */
+    .stAlert {
+        font-size: 13px;
+    }
+    
     /* Hide press enter text */
     .stTextInput div[data-testid="InputInstructions"] {
         display: none !important;
