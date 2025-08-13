@@ -6,8 +6,7 @@ from plotly.subplots import make_subplots
 import json
 from datetime import datetime
 import io
-import sys
-from contextlib import redirect_stdout
+
 
 # Import our existing ES3Estimator class
 from es3_estimator import ES3Estimator
@@ -205,8 +204,7 @@ def run_cluster_analysis(estimator, cluster_id):
         results = {
             'success': False,
             'error': None,
-            'data': {},
-            'raw_output': ''  # Add field to store captured CLI output
+            'data': {}
         }
         
         # Test API connectivity first
@@ -216,9 +214,6 @@ def run_cluster_analysis(estimator, cluster_id):
             return results
         else:
             st.success("✅ API connectivity test passed")
-        
-        # Capture CLI output during analysis
-        captured_output = io.StringIO()
         
         # Fetch environment data
         st.info("🔍 Fetching cluster environment data...")
@@ -275,338 +270,12 @@ def run_cluster_analysis(estimator, cluster_id):
             'environment_data': environment_data
         }
         
-        # Capture CLI-style output
-        with redirect_stdout(captured_output):
-            generate_cli_style_output(estimator, cluster_id, stats_analysis, indexing_metrics, 
-                                    search_metrics, cpu_metrics, ingest_to_query_ratio, 
-                                    total_cluster_memory)
-        
-        # Store the captured output
-        results['raw_output'] = captured_output.getvalue()
         results['success'] = True
         return results
         
     except Exception as e:
         results['error'] = str(e)
         return results
-
-def generate_cli_style_output(estimator, cluster_id, stats_analysis, indexing_metrics, 
-                            search_metrics, cpu_metrics, ingest_to_query_ratio, 
-                            total_cluster_memory):
-    """Generate CLI-style output using the same print statements as es3_estimator.py"""
-    
-    print("🚀 ES3 Cost Estimator - Production Ready")
-    print("=" * 50)
-    print("📡 Fetching cluster data...")
-    print("🔧 Analyzing infrastructure...")
-    print("📊 Fetching cluster statistics...")
-    print("⚡ Fetching performance metrics...")
-    print("✅ Analysis complete! Displaying results...")
-    
-    # Cluster Document Statistics
-    print("=" * 60)
-    print("📊 CLUSTER DOCUMENT STATISTICS")
-    print("=" * 60)
-    
-    if stats_analysis:
-        print(f"📄 Total Documents: {stats_analysis['latest_total_docs']:,}")
-        primary_docs = stats_analysis['latest_primary_docs']
-        total_docs = stats_analysis['latest_total_docs']
-        replica_docs = total_docs - primary_docs
-        print(f"  └─ Primary: {primary_docs:,} docs ({primary_docs/total_docs*100:.1f}%)")
-        print(f"  └─ Replica: {replica_docs:,} docs ({replica_docs/total_docs*100:.1f}%)")
-        
-        total_storage = stats_analysis['latest_storage_gb']
-        primary_storage = stats_analysis['latest_primary_storage_gb']
-        replica_storage = total_storage - primary_storage
-        print(f"💾 Total Storage: {total_storage:.2f} GB")
-        print(f"  └─ Primary: {primary_storage:.2f} GB")
-        print(f"  └─ Replica: {replica_storage:.2f} GB")
-        
-        total_shards = stats_analysis['latest_shards_total']
-        primary_shards = stats_analysis['latest_shards_primary']
-        replica_shards = total_shards - primary_shards
-        print(f"🔗 Total Shards: {total_shards}")
-        print(f"  └─ Primary: {primary_shards} shards")
-        print(f"  └─ Replica: {replica_shards} shards")
-        print(f"🕒 Latest Measurement: {stats_analysis.get('latest_timestamp', 'N/A')}")
-    else:
-        print("❌ No cluster statistics available")
-    
-    # Ingest Performance
-    print("=" * 60)
-    print("📈 INGEST PERFORMANCE (Last 7 days)")
-    print("=" * 60)
-    
-    if indexing_metrics and indexing_metrics.get('cluster_stats'):
-        cluster_stats = indexing_metrics['cluster_stats']
-        print("🔍 Query Configuration:")
-        print("  └─ Time range: 7 days (604,800 seconds)")
-        print("  └─ Buckets: 168 buckets")
-        print("  └─ Bucket duration: 1 hour (3,600 seconds) per bucket")
-        print("  └─ Metric: elasticsearch.index.total.bulk.total_size_in_bytes (cumulative)")
-        print("  └─ Calculation: Derivative to get bytes/sec rate")
-        print("  └─ Aggregation: Max value per bucket, then sum across nodes")
-        print("  └─ Data source: metrics-*:cluster-elasticsearch-*")
-        print(f"📦 Min rate: {cluster_stats['min_rate']:.2f} B/s")
-        print(f"📦 Max rate: {cluster_stats['max_rate']:.2f} B/s")
-        print(f"📦 Avg rate: {cluster_stats['avg_rate']:.2f} B/s")
-        print(f"📊 Data points: {cluster_stats['total_data_points']} across {cluster_stats['node_count']} nodes")
-        print(f"💾 Min rate: {cluster_stats['min_rate_mbps']:.2f} MB/s")
-        print(f"💾 Max rate: {cluster_stats['max_rate_mbps']:.2f} MB/s")
-        print(f"💾 Avg rate: {cluster_stats['avg_rate_mbps']:.2f} MB/s")
-        
-        avg_to_peak_ratio = cluster_stats['avg_rate_mbps'] / cluster_stats['max_rate_mbps'] if cluster_stats['max_rate_mbps'] > 0 else 0
-        print(f"📊 Avg to Peak ratio: {avg_to_peak_ratio:.3f} ({cluster_stats['avg_rate_mbps']:.2f}/{cluster_stats['max_rate_mbps']:.2f})")
-    else:
-        print("❌ No bulk ingest metrics available")
-    
-    # Search Performance  
-    print("=" * 60)
-    print("🔍 SEARCH PERFORMANCE (Last 7 days)")
-    print("=" * 60)
-    
-    if search_metrics and search_metrics.get('cluster_stats'):
-        cluster_stats = search_metrics['cluster_stats']
-        print("🔍 Query Configuration:")
-        print("  └─ Time range: 7 days (604,800 seconds)")
-        print(f"  └─ Buckets: {cluster_stats['total_data_points']} buckets")
-        print("  └─ Bucket duration: 8.4 hours (30,240 seconds) per bucket")
-        print("  └─ Metric: indices.search.fetch_total (cumulative count)")
-        print("  └─ Calculation: Derivative to get queries/sec rate")
-        print("  └─ Aggregation: Max value per bucket, then sum across nodes")
-        print("  └─ Data source: All nodes in cluster")
-        print(f"🔍 Min rate: {cluster_stats['min_rate']:.2f} queries/sec")
-        print(f"🔍 Max rate: {cluster_stats['max_rate']:.2f} queries/sec")
-        print(f"🔍 Avg rate: {cluster_stats['avg_rate']:.2f} queries/sec")
-        print(f"📊 Data points: {cluster_stats['total_data_points']} across {cluster_stats['node_count']} nodes")
-        
-        avg_to_peak_ratio = cluster_stats['avg_rate'] / cluster_stats['max_rate'] if cluster_stats['max_rate'] > 0 else 0
-        print(f"📊 Avg to Peak ratio: {avg_to_peak_ratio:.3f} ({cluster_stats['avg_rate']:.2f}/{cluster_stats['max_rate']:.2f})")
-    else:
-        print("❌ No search metrics available")
-    
-    # CPU Utilization
-    print("=" * 60)
-    print("🖥️  CPU UTILIZATION PERFORMANCE (Last 7 days)")
-    print("=" * 60)
-    
-    if cpu_metrics and cpu_metrics.get('cluster_stats'):
-        cluster_stats = cpu_metrics['cluster_stats']
-        print("🔍 Query Configuration:")
-        print("  └─ Time range: 7 days (604,800 seconds)")
-        print("  └─ Buckets: 168 buckets")
-        print("  └─ Bucket duration: 1 hour (3,600 seconds) per bucket")
-        print("  └─ Metric: container.cpu.usage_in_thousands")
-        print("  └─ Calculation: Average usage across nodes per time bucket")
-        print("  └─ Aggregation: Average across nodes, then stats across time")
-        print("  └─ Data source: logging-*:elasticsearch-2*")
-        
-        if 'excluded_inactive_nodes' in cluster_stats and cluster_stats['excluded_inactive_nodes']:
-            print(f"  └─ Excluded inactive nodes: {', '.join(cluster_stats['excluded_inactive_nodes'])}")
-        
-        print(f"🖥️  Min usage: {cluster_stats['min_usage']:.1f}%")
-        print(f"🖥️  Max usage: {cluster_stats['max_usage']:.1f}%")
-        print(f"🖥️  Avg usage: {cluster_stats['avg_usage']:.1f}%")
-        print(f"📊 Data points: {cluster_stats['total_data_points']} across {cluster_stats['node_count']} nodes")
-        
-        avg_to_peak_ratio = cluster_stats['avg_usage'] / cluster_stats['max_usage'] if cluster_stats['max_usage'] > 0 else 0
-        print(f"📊 Avg to Peak ratio: {avg_to_peak_ratio:.3f} ({cluster_stats['avg_usage']:.1f}%/{cluster_stats['max_usage']:.1f}%)")
-        
-        # CPU interpretation
-        avg_cpu = cluster_stats['avg_usage']
-        if avg_cpu < 30:
-            interpretation = "Low CPU utilization - cluster may be over-provisioned"
-        elif avg_cpu < 60:
-            interpretation = "Moderate CPU utilization - well-balanced workload"
-        elif avg_cpu < 80:
-            interpretation = "High CPU utilization - monitor for performance impact"
-        else:
-            interpretation = "Very high CPU utilization - consider scaling up"
-        print(f"💡 CPU Interpretation: {interpretation}")
-    else:
-        print("❌ No CPU utilization metrics available")
-    
-    # Ingest to Query Ratio
-    print("=" * 60)
-    print("⚖️  INGEST TO QUERY RATIO")
-    print("=" * 60)
-    
-    if ingest_to_query_ratio:
-        print("🔍 Query Configuration:")
-        print("  └─ Time range: 7 days (NOW() - INTERVAL 7 DAY)")
-        print("  └─ Data source: metrics-*:cluster-elasticsearch-*")
-        print("  └─ Filter: event.dataset = elasticsearch.node.stats")
-        print("  └─ Metrics: elasticsearch.node.stats.indices.indexing.index_time.ms")
-        print("  └─ Query metrics: elasticsearch.node.stats.indices.search.fetch_time.ms + query_time.ms")
-        print("  └─ Calculation: (total_index_time / total_query_time) * 100")
-        print("  └─ Aggregation: Max per node, then sum across cluster")
-        print(f"⚖️  Ingest to Query Ratio: {ingest_to_query_ratio['ratio_percentage']:.1f}%")
-        print(f"📊 Numeric Ratio: {ingest_to_query_ratio['ratio_percentage']:.1f}")
-        
-        # Interpretation
-        ratio = ingest_to_query_ratio['ratio_percentage']
-        if ratio > 50:
-            interpretation = "Ingest-heavy workload - prioritize indexing performance"
-        elif ratio > 30:
-            interpretation = "Balanced workload - consider both ingest and search optimization"
-        else:
-            interpretation = "Query-heavy workload - prioritize search performance"
-        print(f"💡 Interpretation: {interpretation}")
-        
-        # Cost calculations if available
-        if (total_cluster_memory and indexing_metrics and indexing_metrics.get('cluster_stats') and 
-            search_metrics and search_metrics.get('cluster_stats') and 
-            cpu_metrics and cpu_metrics.get('cluster_stats')):
-            
-            memory_gb = total_cluster_memory.get('numeric_memory_gb', 0)
-            cpu_factor = cpu_metrics['cluster_stats']['avg_usage'] / 100.0
-            
-            # Ingest tier
-            print("💰 **INGEST TIER ESTIMATION:**")
-            ingest_ratio = ingest_to_query_ratio['ratio_percentage'] / 100.0
-            
-            # Calculate avg to peak ratio from indexing metrics
-            indexing_cluster_stats = indexing_metrics['cluster_stats']
-            avg_to_peak_ratio = (indexing_cluster_stats['avg_rate_mbps'] / indexing_cluster_stats['max_rate_mbps'] 
-                                if indexing_cluster_stats['max_rate_mbps'] > 0 else 0)
-            
-            ingest_vcus = memory_gb * ingest_ratio * avg_to_peak_ratio * cpu_factor
-            vcu_cost = 0.14  # Default VCU cost
-            hourly_cost = ingest_vcus * vcu_cost
-            daily_cost = hourly_cost * 24
-            monthly_cost = daily_cost * 30
-            
-            print(f"  └─ Total Cluster Memory: {memory_gb:.1f} GB")
-            print(f"  └─ Ingest Ratio: {ingest_ratio:.3f} ({ingest_to_query_ratio['ratio_percentage']:.1f}%)")
-            print(f"  └─ Avg to Peak Ratio: {avg_to_peak_ratio:.3f}")
-            print(f"  └─ CPU Utilization Factor: {cpu_factor:.2f}")
-            print(f"  └─ Estimated Ingest VCUs: {ingest_vcus:.1f} VCUs")
-            print(f"  └─ VCU Cost: ${vcu_cost:.2f}/hour")
-            print(f"  └─ Hourly Cost: ${hourly_cost:.2f}")
-            print(f"  └─ Daily Cost: ${daily_cost:.2f}")
-            print(f"  └─ **Monthly Cost: ${monthly_cost:.2f}**")
-            print(f"  └─ Note: Includes CPU utilization factor based on {cpu_metrics['cluster_stats']['avg_usage']:.1f}% average CPU usage")
-            
-            # Search tier
-            print("🔍 **SEARCH TIER ESTIMATION:**")
-            query_ratio = 1.0 - ingest_ratio
-            
-            # Calculate avg to peak ratio from search metrics
-            search_cluster_stats = search_metrics['cluster_stats']
-            search_avg_to_peak_ratio = (search_cluster_stats['avg_rate'] / search_cluster_stats['max_rate'] 
-                                      if search_cluster_stats['max_rate'] > 0 else 0)
-            
-            search_vcus = memory_gb * query_ratio * search_avg_to_peak_ratio * cpu_factor
-            search_hourly_cost = search_vcus * vcu_cost
-            search_daily_cost = search_hourly_cost * 24
-            search_monthly_cost = search_daily_cost * 30
-            
-            print(f"  └─ Total Cluster Memory: {memory_gb:.1f} GB")
-            print(f"  └─ Query Ratio: {query_ratio:.3f} ({(query_ratio*100):.1f}%)")
-            print(f"  └─ Search Avg to Peak Ratio: {search_avg_to_peak_ratio:.3f}")
-            print(f"  └─ CPU Utilization Factor: {cpu_factor:.2f}")
-            print(f"  └─ Estimated Search VCUs: {search_vcus:.1f} VCUs")
-            print(f"  └─ VCU Cost: ${vcu_cost:.2f}/hour")
-            print(f"  └─ Hourly Cost: ${search_hourly_cost:.2f}")
-            print(f"  └─ Daily Cost: ${search_daily_cost:.2f}")
-            print(f"  └─ **Monthly Cost: ${search_monthly_cost:.2f}**")
-            print(f"  └─ Note: Includes CPU utilization factor based on {cpu_metrics['cluster_stats']['avg_usage']:.1f}% average CPU usage")
-            
-            # Storage tier
-            if stats_analysis:
-                print("💾 **STORAGE TIER ESTIMATION:**")
-                primary_storage_gb = stats_analysis['latest_primary_storage_gb']
-                storage_cost_per_gb = 0.047  # Default storage cost
-                storage_monthly_cost = primary_storage_gb * storage_cost_per_gb
-                
-                print(f"  └─ Primary Storage: {primary_storage_gb:.1f} GB")
-                print(f"  └─ Storage Cost: ${storage_cost_per_gb:.3f}/GB/month")
-                print(f"  └─ **Monthly Cost: ${storage_monthly_cost:.2f}**")
-                
-                # Total cost
-                total_monthly_cost = monthly_cost + search_monthly_cost + storage_monthly_cost
-                print("💰 **TOTAL MONTHLY COST (Ingest + Search + Storage):**")
-                print(f"  └─ Ingest Tier: ${monthly_cost:.2f}")
-                print(f"  └─ Search Tier: ${search_monthly_cost:.2f}")
-                print(f"  └─ Storage Tier: ${storage_monthly_cost:.2f}")
-                print(f"  └─ **Total: ${total_monthly_cost:.2f}**")
-                
-                # Guidance
-                print("🎯 ES3 Capacity Planning Guidance:")
-                if ratio > 50:
-                    print("  └─ Focus on Ingest Power for indexing performance")
-                    print("  └─ Consider Ingest-optimized or High-Throughput presets")
-                else:
-                    print("  └─ Focus on Search Power for query performance")
-                    print("  └─ Consider Performant or High-Throughput presets")
-    else:
-        print("❌ No ingest-to-query ratio data available")
-    
-    # Document Size Analysis
-    print("=" * 60)
-    print("📊 DOCUMENT SIZE ANALYSIS")
-    print("=" * 60)
-    
-    if stats_analysis:
-        total_docs = stats_analysis['latest_total_docs']
-        primary_docs = stats_analysis['latest_primary_docs']
-        primary_storage_gb = stats_analysis['latest_primary_storage_gb']
-        
-        avg_size_kb = (primary_storage_gb * 1024 * 1024) / primary_docs if primary_docs > 0 else 0
-        
-        print(f"📄 Total documents: {total_docs:,}")
-        print(f"📄 Primary documents: {primary_docs:,}")
-        print(f"📄 Estimated average size: {avg_size_kb:.2f} KB")
-        
-        # Document size category
-        if avg_size_kb < 1:
-            size_category = "📄 Very Small (<1KB)"
-            insight = "Typical of simple logs or metrics data"
-        elif avg_size_kb < 10:
-            size_category = "📄 Small (1-10KB)"
-            insight = "Common in structured logs and events"
-        elif avg_size_kb < 100:
-            size_category = "📄 Medium (10-100KB)"
-            insight = "Medium-sized documents common in application data or enriched logs"
-        elif avg_size_kb < 1000:
-            size_category = "📄 Large (100KB-1MB)"
-            insight = "Large documents typical of content management or document storage"
-        else:
-            size_category = "📄 Very Large (>1MB)"
-            insight = "Very large documents - consider document splitting strategies"
-        
-        print(f"📄 Document size category: {size_category}")
-        print(f"💾 Primary storage: {primary_storage_gb:.2f} GB")
-        print(f"📊 Storage efficiency: {avg_size_kb:.2f} KB per document")
-        print(f"💡 **INSIGHT**: {insight}")
-    else:
-        print("❌ No document size analysis available")
-    
-    # Analysis Summary
-    print("=" * 60)
-    print("✅ ANALYSIS SUMMARY")
-    print("=" * 60)
-    
-    # Count available data
-    available_sections = []
-    if stats_analysis:
-        available_sections.append(f"📊 Analyzed 100 environment records")
-        available_sections.append(f"📈 Found cluster statistics with {stats_analysis['latest_total_docs']:,} total documents")
-    if indexing_metrics and indexing_metrics.get('cluster_stats'):
-        available_sections.append(f"⚡ Average indexing rate: {indexing_metrics['cluster_stats']['avg_rate']:.2f} docs/sec over last 7 days")
-    if search_metrics and search_metrics.get('cluster_stats'):
-        available_sections.append(f"🔍 Average search rate: {search_metrics['cluster_stats']['avg_rate']:.2f} queries/sec over last 7 days")
-    if cpu_metrics and cpu_metrics.get('cluster_stats'):
-        available_sections.append(f"🖥️ Average CPU utilization: {cpu_metrics['cluster_stats']['avg_usage']:.1f}% over last 7 days")
-    
-    if available_sections:
-        for section in available_sections:
-            print(section)
-        print("🎉 Analysis completed successfully!")
-    else:
-        print("❌ Failed to fetch cluster data")
-        print("   Please check your cluster ID and API key")
 
 def display_results(data, config):
     """Display the analysis results in the Streamlit interface"""
@@ -621,13 +290,12 @@ def display_results(data, config):
     st.success("✅ Analysis completed successfully!")
     
     # Create tabs for different sections
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
         "📊 Cluster Overview", 
         "⚡ Performance", 
         "💰 Cost Analysis", 
         "📈 Charts", 
-        "📋 Summary",
-        "📄 Raw Output"
+        "📋 Summary"
     ])
     
     with tab1:
@@ -647,9 +315,6 @@ def display_results(data, config):
     
     with tab5:
         display_summary(data, config)
-    
-    with tab6:
-        display_raw_output(data, config)
 
 def display_cluster_overview(stats_analysis):
     """Display cluster overview statistics"""
@@ -1056,24 +721,7 @@ def display_summary(data, config):
                 mime="text/csv"
             )
 
-def display_raw_output(data, config):
-    """Display raw text output captured from CLI analysis"""
-    st.header("📄 Raw Analysis Output")
-    st.write("This shows the exact same output as the command-line version.")
-    
-    # Get the captured CLI output
-    raw_output = data.get('raw_output', 'No raw output available')
-    
-    # Display in a code block for easy copying
-    st.code(raw_output, language="text")
-    
-    # Download button for the raw output
-    st.download_button(
-        label="💾 Download Raw Output",
-        data=raw_output,
-        file_name=f"es3_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
-        mime="text/plain"
-    )
+
 
 
 
