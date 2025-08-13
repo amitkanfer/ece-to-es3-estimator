@@ -63,6 +63,22 @@ st.markdown("""
         margin-top: 1.5rem;
         margin-bottom: 0.5rem;
     }
+    /* Hide the "Press Enter to apply" text */
+    .stTextInput > label > div[data-testid="stMarkdownContainer"] > p {
+        display: none !important;
+    }
+    /* Hide press enter instruction text */
+    .stTextInput div[data-testid="InputInstructions"] {
+        display: none !important;
+    }
+    /* Hide any instruction text that appears below input */
+    .stTextInput > div > div > div > div:last-child {
+        display: none !important;
+    }
+    /* More specific targeting for press enter text */
+    div[data-testid="stTextInput"] div:last-child p {
+        display: none !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
