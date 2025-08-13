@@ -19,63 +19,23 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS for better styling
+# Minimal CSS styling - clean and professional
 st.markdown("""
 <style>
-    .main-header {
-        font-size: 2.5rem;
-        color: #1f77b4;
-        text-align: center;
-        margin-bottom: 2rem;
-    }
-    .metric-card {
-        background-color: #f0f2f6;
-        padding: 1rem;
-        border-radius: 0.5rem;
-        margin: 0.5rem 0;
-    }
-    .success-message {
-        color: #28a745;
-        font-weight: bold;
-    }
-    .error-message {
-        color: #dc3545;
-        font-weight: bold;
-    }
-    /* Fix input field styling */
+    /* Clean input styling */
     .stTextInput > div > div > input {
-        background-color: white;
-        border: 2px solid #e0e0e0;
+        border: 1px solid #d1d5db;
         border-radius: 4px;
         padding: 8px 12px;
-        font-size: 14px;
     }
     .stTextInput > div > div > input:focus {
-        border-color: #1f77b4;
-        box-shadow: 0 0 0 2px rgba(31, 119, 180, 0.2);
+        border-color: #6b7280;
+        box-shadow: 0 0 0 1px #6b7280;
     }
-    /* Improve sidebar styling */
-    .css-1d391kg {
-        padding: 1rem 1rem 1rem 1rem;
-    }
-    /* Better spacing for subheaders */
-    .stSubheader {
-        margin-top: 1.5rem;
-        margin-bottom: 0.5rem;
-    }
-    /* Hide the "Press Enter to apply" text */
-    .stTextInput > label > div[data-testid="stMarkdownContainer"] > p {
-        display: none !important;
-    }
-    /* Hide press enter instruction text */
+    /* Hide press enter text */
     .stTextInput div[data-testid="InputInstructions"] {
         display: none !important;
     }
-    /* Hide any instruction text that appears below input */
-    .stTextInput > div > div > div > div:last-child {
-        display: none !important;
-    }
-    /* More specific targeting for press enter text */
     div[data-testid="stTextInput"] div:last-child p {
         display: none !important;
     }
@@ -84,12 +44,12 @@ st.markdown("""
 
 def main():
     # Header
-    st.markdown('<h1 class="main-header">🚀 ES3 Cost Estimator</h1>', unsafe_allow_html=True)
-    st.markdown("**Analyze your Elasticsearch cluster and estimate ES3 serverless costs**")
+    st.title("ES3 Cost Estimator")
+    st.markdown("Analyze your Elasticsearch cluster and estimate ES3 serverless costs")
     
     # Sidebar for configuration
     with st.sidebar:
-        st.header("🔧 Configuration")
+        st.header("Configuration")
         
         # Required inputs
         st.subheader("Required Settings")
@@ -145,65 +105,39 @@ def main():
             )
         
         # Analysis button
-        run_analysis = st.button("🔍 Run Analysis", type="primary", use_container_width=True)
+        run_analysis = st.button("Run Analysis", type="primary", use_container_width=True)
     
     # Main content area
     if not run_analysis:
-        # Welcome screen with better styling
+        st.info("Enter your cluster details in the sidebar and click 'Run Analysis' to get started")
+        
+        st.markdown("### What This Tool Does")
         st.markdown("""
-        <div style="text-align: center; padding: 2rem; background-color: #f8f9fa; border-radius: 10px; margin: 1rem 0; border: 1px solid #dee2e6;">
-            <h3 style="color: #495057; margin-bottom: 1rem;">👈 Enter your cluster details and click 'Run Analysis'</h3>
-            <p style="color: #6c757d; font-size: 1.1rem; margin-bottom: 0;">Provide your Cluster ID and API Key in the sidebar to analyze your Elasticsearch cluster</p>
-        </div>
-        """, unsafe_allow_html=True)
+        - **Cluster Analysis**: Document statistics, storage breakdown, shard distribution
+        - **Performance Metrics**: Indexing rates, search performance, CPU utilization  
+        - **Cost Estimation**: ES3 pricing analysis and resource optimization
+        """)
         
-        st.markdown("## 📋 What This Tool Does:")
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            st.markdown("""
-            **📊 Cluster Analysis**
-            - Document statistics
-            - Storage breakdown
-            - Shard distribution
-            """)
-        
-        with col2:
-            st.markdown("""
-            **⚡ Performance Metrics**
-            - Indexing rates
-            - Search performance
-            - CPU utilization
-            """)
-        
-        with col3:
-            st.markdown("""
-            **💰 Cost Estimation**
-            - ES3 VCU requirements
-            - Monthly cost breakdown
-            - Capacity planning
-            """)
-        
-        st.markdown("## 🔒 Security Note:")
-        st.warning("Your API key is processed securely and never stored. All analysis happens in real-time.")
+        st.markdown("### Security Note")
+        st.caption("Your API key is processed securely and never stored. All analysis happens in real-time.")
         
         return
     
     # Validate inputs
     if not cluster_id or not api_key:
-        st.error("❌ Please provide both Cluster ID and API Key")
+        st.error("Please provide both Cluster ID and API Key")
         return
     
     if len(cluster_id) < 10:
-        st.error("❌ Cluster ID appears to be invalid (too short)")
+        st.error("Cluster ID appears to be invalid (too short)")
         return
     
     if len(api_key) < 20:
-        st.error("❌ API key appears to be invalid (too short)")
+        st.error("API key appears to be invalid (too short)")
         return
     
     # Run the analysis
-    with st.spinner("🔄 Analyzing your cluster... This may take 30-60 seconds"):
+    with st.spinner("Analyzing your cluster... This may take 30-60 seconds"):
         try:
             # Initialize estimator with configuration
             config = {
@@ -221,10 +155,10 @@ def main():
             if results['success']:
                 display_results(results['data'], config)
             else:
-                st.error(f"❌ Analysis failed: {results['error']}")
+                st.error(f"Analysis failed: {results['error']}")
                 
         except Exception as e:
-            st.error(f"💥 Unexpected error: {str(e)}")
+            st.error(f"Unexpected error: {str(e)}")
 
 def test_basic_connectivity(estimator):
     """Test basic API connectivity"""
@@ -329,39 +263,35 @@ def display_results(data, config):
     ingest_to_query_ratio = data['ingest_to_query_ratio']
     total_cluster_memory = data['total_cluster_memory']
     
-    st.success("✅ Analysis completed successfully!")
+    st.success("Analysis completed successfully!")
     
-    # Create tabs for different sections
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
-        "📊 Cluster Overview", 
-        "⚡ Performance", 
-        "💰 Cost Analysis", 
-        "📈 Charts", 
-        "📋 Summary"
+    # Create simplified tabs
+    tab1, tab2, tab3 = st.tabs([
+        "Overview", 
+        "Performance & Cost", 
+        "Charts"
     ])
     
     with tab1:
         display_cluster_overview(stats_analysis)
+        st.markdown("---")
+        display_summary(data, config)
     
     with tab2:
         display_performance_metrics(indexing_metrics, search_metrics, cpu_metrics)
-    
-    with tab3:
+        st.markdown("---")
         display_cost_analysis(
             stats_analysis, indexing_metrics, search_metrics, 
             cpu_metrics, ingest_to_query_ratio, total_cluster_memory, config
         )
     
-    with tab4:
+    with tab3:
         display_charts(indexing_metrics, search_metrics, cpu_metrics)
-    
-    with tab5:
-        display_summary(data, config)
 
 def display_cluster_overview(stats_analysis):
     """Display cluster overview statistics"""
     if not stats_analysis:
-        st.error("❌ No cluster statistics available")
+        st.error("No cluster statistics available")
         return
     
     st.header("📊 Cluster Statistics")
@@ -479,7 +409,7 @@ def display_cost_analysis(stats_analysis, indexing_metrics, search_metrics,
     st.header("💰 ES3 Cost Analysis")
     
     if not (total_cluster_memory and ingest_to_query_ratio and indexing_metrics):
-        st.error("❌ Insufficient data for cost calculation")
+        st.error("Insufficient data for cost calculation")
         return
     
     # Calculate costs (simplified version of the original logic)
