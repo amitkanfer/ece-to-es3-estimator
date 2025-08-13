@@ -427,8 +427,186 @@ def generate_cli_style_output(estimator, cluster_id, stats_analysis, indexing_me
     else:
         print("❌ No CPU utilization metrics available")
     
-    # Continue with the rest of the sections (ingest-to-query ratio, cost calculations, etc.)
-    # This is getting long, so I'll add the rest in the next part...
+    # Ingest to Query Ratio
+    print("=" * 60)
+    print("⚖️  INGEST TO QUERY RATIO")
+    print("=" * 60)
+    
+    if ingest_to_query_ratio:
+        print("🔍 Query Configuration:")
+        print("  └─ Time range: 7 days (NOW() - INTERVAL 7 DAY)")
+        print("  └─ Data source: metrics-*:cluster-elasticsearch-*")
+        print("  └─ Filter: event.dataset = elasticsearch.node.stats")
+        print("  └─ Metrics: elasticsearch.node.stats.indices.indexing.index_time.ms")
+        print("  └─ Query metrics: elasticsearch.node.stats.indices.search.fetch_time.ms + query_time.ms")
+        print("  └─ Calculation: (total_index_time / total_query_time) * 100")
+        print("  └─ Aggregation: Max per node, then sum across cluster")
+        print(f"⚖️  Ingest to Query Ratio: {ingest_to_query_ratio['ratio_percentage']:.1f}%")
+        print(f"📊 Numeric Ratio: {ingest_to_query_ratio['ratio_percentage']:.1f}")
+        
+        # Interpretation
+        ratio = ingest_to_query_ratio['ratio_percentage']
+        if ratio > 50:
+            interpretation = "Ingest-heavy workload - prioritize indexing performance"
+        elif ratio > 30:
+            interpretation = "Balanced workload - consider both ingest and search optimization"
+        else:
+            interpretation = "Query-heavy workload - prioritize search performance"
+        print(f"💡 Interpretation: {interpretation}")
+        
+        # Cost calculations if available
+        if (total_cluster_memory and indexing_metrics and indexing_metrics.get('cluster_stats') and 
+            search_metrics and search_metrics.get('cluster_stats') and 
+            cpu_metrics and cpu_metrics.get('cluster_stats')):
+            
+            memory_gb = total_cluster_memory.get('numeric_memory_gb', 0)
+            cpu_factor = cpu_metrics['cluster_stats']['avg_usage'] / 100.0
+            
+            # Ingest tier
+            print("💰 **INGEST TIER ESTIMATION:**")
+            ingest_ratio = ingest_to_query_ratio['ratio_percentage'] / 100.0
+            
+            # Calculate avg to peak ratio from indexing metrics
+            indexing_cluster_stats = indexing_metrics['cluster_stats']
+            avg_to_peak_ratio = (indexing_cluster_stats['avg_rate_mbps'] / indexing_cluster_stats['max_rate_mbps'] 
+                                if indexing_cluster_stats['max_rate_mbps'] > 0 else 0)
+            
+            ingest_vcus = memory_gb * ingest_ratio * avg_to_peak_ratio * cpu_factor
+            vcu_cost = 0.14  # Default VCU cost
+            hourly_cost = ingest_vcus * vcu_cost
+            daily_cost = hourly_cost * 24
+            monthly_cost = daily_cost * 30
+            
+            print(f"  └─ Total Cluster Memory: {memory_gb:.1f} GB")
+            print(f"  └─ Ingest Ratio: {ingest_ratio:.3f} ({ingest_to_query_ratio['ratio_percentage']:.1f}%)")
+            print(f"  └─ Avg to Peak Ratio: {avg_to_peak_ratio:.3f}")
+            print(f"  └─ CPU Utilization Factor: {cpu_factor:.2f}")
+            print(f"  └─ Estimated Ingest VCUs: {ingest_vcus:.1f} VCUs")
+            print(f"  └─ VCU Cost: ${vcu_cost:.2f}/hour")
+            print(f"  └─ Hourly Cost: ${hourly_cost:.2f}")
+            print(f"  └─ Daily Cost: ${daily_cost:.2f}")
+            print(f"  └─ **Monthly Cost: ${monthly_cost:.2f}**")
+            print(f"  └─ Note: Includes CPU utilization factor based on {cpu_metrics['cluster_stats']['avg_usage']:.1f}% average CPU usage")
+            
+            # Search tier
+            print("🔍 **SEARCH TIER ESTIMATION:**")
+            query_ratio = 1.0 - ingest_ratio
+            
+            # Calculate avg to peak ratio from search metrics
+            search_cluster_stats = search_metrics['cluster_stats']
+            search_avg_to_peak_ratio = (search_cluster_stats['avg_rate'] / search_cluster_stats['max_rate'] 
+                                      if search_cluster_stats['max_rate'] > 0 else 0)
+            
+            search_vcus = memory_gb * query_ratio * search_avg_to_peak_ratio * cpu_factor
+            search_hourly_cost = search_vcus * vcu_cost
+            search_daily_cost = search_hourly_cost * 24
+            search_monthly_cost = search_daily_cost * 30
+            
+            print(f"  └─ Total Cluster Memory: {memory_gb:.1f} GB")
+            print(f"  └─ Query Ratio: {query_ratio:.3f} ({(query_ratio*100):.1f}%)")
+            print(f"  └─ Search Avg to Peak Ratio: {search_avg_to_peak_ratio:.3f}")
+            print(f"  └─ CPU Utilization Factor: {cpu_factor:.2f}")
+            print(f"  └─ Estimated Search VCUs: {search_vcus:.1f} VCUs")
+            print(f"  └─ VCU Cost: ${vcu_cost:.2f}/hour")
+            print(f"  └─ Hourly Cost: ${search_hourly_cost:.2f}")
+            print(f"  └─ Daily Cost: ${search_daily_cost:.2f}")
+            print(f"  └─ **Monthly Cost: ${search_monthly_cost:.2f}**")
+            print(f"  └─ Note: Includes CPU utilization factor based on {cpu_metrics['cluster_stats']['avg_usage']:.1f}% average CPU usage")
+            
+            # Storage tier
+            if stats_analysis:
+                print("💾 **STORAGE TIER ESTIMATION:**")
+                primary_storage_gb = stats_analysis['latest_primary_storage_gb']
+                storage_cost_per_gb = 0.047  # Default storage cost
+                storage_monthly_cost = primary_storage_gb * storage_cost_per_gb
+                
+                print(f"  └─ Primary Storage: {primary_storage_gb:.1f} GB")
+                print(f"  └─ Storage Cost: ${storage_cost_per_gb:.3f}/GB/month")
+                print(f"  └─ **Monthly Cost: ${storage_monthly_cost:.2f}**")
+                
+                # Total cost
+                total_monthly_cost = monthly_cost + search_monthly_cost + storage_monthly_cost
+                print("💰 **TOTAL MONTHLY COST (Ingest + Search + Storage):**")
+                print(f"  └─ Ingest Tier: ${monthly_cost:.2f}")
+                print(f"  └─ Search Tier: ${search_monthly_cost:.2f}")
+                print(f"  └─ Storage Tier: ${storage_monthly_cost:.2f}")
+                print(f"  └─ **Total: ${total_monthly_cost:.2f}**")
+                
+                # Guidance
+                print("🎯 ES3 Capacity Planning Guidance:")
+                if ratio > 50:
+                    print("  └─ Focus on Ingest Power for indexing performance")
+                    print("  └─ Consider Ingest-optimized or High-Throughput presets")
+                else:
+                    print("  └─ Focus on Search Power for query performance")
+                    print("  └─ Consider Performant or High-Throughput presets")
+    else:
+        print("❌ No ingest-to-query ratio data available")
+    
+    # Document Size Analysis
+    print("=" * 60)
+    print("📊 DOCUMENT SIZE ANALYSIS")
+    print("=" * 60)
+    
+    if stats_analysis:
+        total_docs = stats_analysis['latest_total_docs']
+        primary_docs = stats_analysis['latest_primary_docs']
+        primary_storage_gb = stats_analysis['latest_primary_storage_gb']
+        
+        avg_size_kb = (primary_storage_gb * 1024 * 1024) / primary_docs if primary_docs > 0 else 0
+        
+        print(f"📄 Total documents: {total_docs:,}")
+        print(f"📄 Primary documents: {primary_docs:,}")
+        print(f"📄 Estimated average size: {avg_size_kb:.2f} KB")
+        
+        # Document size category
+        if avg_size_kb < 1:
+            size_category = "📄 Very Small (<1KB)"
+            insight = "Typical of simple logs or metrics data"
+        elif avg_size_kb < 10:
+            size_category = "📄 Small (1-10KB)"
+            insight = "Common in structured logs and events"
+        elif avg_size_kb < 100:
+            size_category = "📄 Medium (10-100KB)"
+            insight = "Medium-sized documents common in application data or enriched logs"
+        elif avg_size_kb < 1000:
+            size_category = "📄 Large (100KB-1MB)"
+            insight = "Large documents typical of content management or document storage"
+        else:
+            size_category = "📄 Very Large (>1MB)"
+            insight = "Very large documents - consider document splitting strategies"
+        
+        print(f"📄 Document size category: {size_category}")
+        print(f"💾 Primary storage: {primary_storage_gb:.2f} GB")
+        print(f"📊 Storage efficiency: {avg_size_kb:.2f} KB per document")
+        print(f"💡 **INSIGHT**: {insight}")
+    else:
+        print("❌ No document size analysis available")
+    
+    # Analysis Summary
+    print("=" * 60)
+    print("✅ ANALYSIS SUMMARY")
+    print("=" * 60)
+    
+    # Count available data
+    available_sections = []
+    if stats_analysis:
+        available_sections.append(f"📊 Analyzed 100 environment records")
+        available_sections.append(f"📈 Found cluster statistics with {stats_analysis['latest_total_docs']:,} total documents")
+    if indexing_metrics and indexing_metrics.get('cluster_stats'):
+        available_sections.append(f"⚡ Average indexing rate: {indexing_metrics['cluster_stats']['avg_rate']:.2f} docs/sec over last 7 days")
+    if search_metrics and search_metrics.get('cluster_stats'):
+        available_sections.append(f"🔍 Average search rate: {search_metrics['cluster_stats']['avg_rate']:.2f} queries/sec over last 7 days")
+    if cpu_metrics and cpu_metrics.get('cluster_stats'):
+        available_sections.append(f"🖥️ Average CPU utilization: {cpu_metrics['cluster_stats']['avg_usage']:.1f}% over last 7 days")
+    
+    if available_sections:
+        for section in available_sections:
+            print(section)
+        print("🎉 Analysis completed successfully!")
+    else:
+        print("❌ Failed to fetch cluster data")
+        print("   Please check your cluster ID and API key")
 
 def display_results(data, config):
     """Display the analysis results in the Streamlit interface"""
