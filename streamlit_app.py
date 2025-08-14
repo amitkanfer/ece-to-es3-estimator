@@ -693,7 +693,7 @@ def display_cost_analysis(stats_analysis, indexing_metrics, search_metrics,
     
     with col2:
         st.metric("Total Cluster Memory", f"{total_memory_gb:.1f} GB")
-        st.metric("CPU Utilization Factor", f"{cpu_utilization_factor:.2f}")
+        st.metric("CPU Utilization Factor", f"{cpu_utilization_factor*100:.1f}%")
         
         # Collapsible memory calculation details
         with st.expander("📋 Memory Analysis Details"):
