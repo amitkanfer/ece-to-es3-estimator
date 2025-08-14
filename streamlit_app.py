@@ -194,6 +194,9 @@ def main():
         st.error("API key appears to be invalid (too short)")
         return
     
+    # Create empty placeholders for progress messages that we can clear later
+    progress_placeholder = st.empty()
+    
     # Run the analysis
     with st.spinner("Analyzing your cluster... This may take 30-60 seconds"):
         try:
@@ -208,14 +211,19 @@ def main():
             estimator = ES3Estimator(api_key)
             
             # Fetch all data
-            results = run_cluster_analysis(estimator, cluster_id)
+            results = run_cluster_analysis(estimator, cluster_id, progress_placeholder)
             
             if results['success']:
+                # Clear progress messages and show results
+                progress_placeholder.empty()
+                st.success("Analysis completed successfully!")
                 display_results(results['data'], config, cluster_id)
             else:
+                progress_placeholder.empty()
                 st.error(f"Analysis failed: {results['error']}")
                 
         except Exception as e:
+            progress_placeholder.empty()
             st.error(f"Unexpected error: {str(e)}")
 
 def test_basic_connectivity(estimator):
@@ -232,7 +240,7 @@ def test_basic_connectivity(estimator):
     except:
         return False
 
-def run_cluster_analysis(estimator, cluster_id):
+def run_cluster_analysis(estimator, cluster_id, progress_placeholder):
     """Run the complete cluster analysis"""
     try:
         results = {
@@ -241,21 +249,30 @@ def run_cluster_analysis(estimator, cluster_id):
             'data': {}
         }
         
+        # Keep track of progress messages
+        progress_messages = []
+        
         # Test API connectivity first
-        st.info("🔌 Testing API connectivity...")
+        progress_messages.append("🔌 Testing API connectivity...")
+        progress_placeholder.info("\n\n".join(progress_messages))
+        
         if not test_basic_connectivity(estimator):
             results['error'] = "Failed to connect to Elasticsearch API. Please check:\n1. API key is valid\n2. Network connectivity\n3. Base URL is correct"
             return results
         else:
-            st.success("✅ API connectivity test passed")
+            progress_messages[-1] = "✅ API connectivity test passed"
+            progress_placeholder.success("\n\n".join(progress_messages))
         
         # Fetch environment data
-        st.info("🔍 Fetching cluster environment data...")
+        progress_messages.append("🔍 Fetching cluster environment data...")
+        progress_placeholder.info("\n\n".join(progress_messages))
+        
         environment_data = estimator.fetch_cluster_environment_data(cluster_id)
         
         if not environment_data:
             # Try to get more specific error info
-            st.warning("⚠️ No environment data returned. Trying alternative approach...")
+            progress_messages[-1] = "⚠️ No environment data returned. Trying alternative approach..."
+            progress_placeholder.warning("\n\n".join(progress_messages))
             
             # Let's try fetching cluster stats instead as the first step
             cluster_stats = estimator.fetch_cluster_stats(cluster_id)
@@ -263,10 +280,12 @@ def run_cluster_analysis(estimator, cluster_id):
                 results['error'] = "Could not fetch any cluster data. This could mean:\n1. Cluster ID is incorrect\n2. API key lacks permissions\n3. Cluster is not accessible"
                 return results
             else:
-                st.success("✅ Cluster stats fetched successfully - proceeding without environment data")
+                progress_messages[-1] = "✅ Cluster stats fetched successfully - proceeding without environment data"
+                progress_placeholder.success("\n\n".join(progress_messages))
                 environment_data = None  # Continue without environment data
         else:
-            st.success("✅ Environment data fetched successfully")
+            progress_messages[-1] = "✅ Environment data fetched successfully"
+            progress_placeholder.success("\n\n".join(progress_messages))
         
         # Fetch cluster statistics
         cluster_stats = estimator.fetch_cluster_stats(cluster_id)
@@ -320,8 +339,6 @@ def display_results(data, config, cluster_id):
     cpu_metrics = data['cpu_metrics']
     ingest_to_query_ratio = data['ingest_to_query_ratio']
     total_cluster_memory = data['total_cluster_memory']
-    
-    st.success("Analysis completed successfully!")
     
     # Create simplified tabs
     tab1, tab2, tab3 = st.tabs([
