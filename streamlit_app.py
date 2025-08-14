@@ -211,7 +211,7 @@ def main():
             results = run_cluster_analysis(estimator, cluster_id)
             
             if results['success']:
-                display_results(results['data'], config)
+                display_results(results['data'], config, cluster_id)
             else:
                 st.error(f"Analysis failed: {results['error']}")
                 
@@ -311,7 +311,7 @@ def run_cluster_analysis(estimator, cluster_id):
         results['error'] = str(e)
         return results
 
-def display_results(data, config):
+def display_results(data, config, cluster_id):
     """Display the analysis results in the Streamlit interface"""
     
     stats_analysis = data['stats_analysis']
@@ -331,7 +331,7 @@ def display_results(data, config):
     ])
     
     with tab1:
-        display_cluster_overview(stats_analysis)
+        display_cluster_overview(stats_analysis, cluster_id)
         st.markdown("---")
         display_summary(data, config)
     
@@ -346,13 +346,16 @@ def display_results(data, config):
     with tab3:
         display_charts(indexing_metrics, search_metrics, cpu_metrics)
 
-def display_cluster_overview(stats_analysis):
+def display_cluster_overview(stats_analysis, cluster_id):
     """Display cluster overview statistics"""
     if not stats_analysis:
         st.error("No cluster statistics available")
         return
     
     st.header("📊 Cluster Statistics")
+    
+    # Display cluster ID
+    st.info(f"**Cluster ID:** `{cluster_id}`")
     
     # Key metrics in columns
     col1, col2, col3, col4 = st.columns(4)
@@ -426,6 +429,30 @@ def display_performance_metrics(indexing_metrics, search_metrics, cpu_metrics):
             st.metric("Peak Rate", f"{stats['max_rate_mbps']:.2f} MB/s")
             efficiency = (stats['avg_rate_mbps'] / stats['max_rate_mbps']) * 100
             st.metric("Efficiency", f"{efficiency:.1f}%", help="Average to peak ratio")
+            
+            # Collapsible calculation details
+            with st.expander("📋 Indexing Calculation Details"):
+                st.markdown("""
+                **Query Configuration:**
+                - **Time range:** 7 days (604,800 seconds)
+                - **Buckets:** 168 buckets (1 hour per bucket)
+                - **Metric:** `elasticsearch.index.total.bulk.total_size_in_bytes` (cumulative)
+                - **Calculation:** Derivative to get bytes/sec rate
+                - **Aggregation:** Max value per bucket, then sum across nodes
+                - **Data source:** `metrics-*:cluster-elasticsearch-*`
+                
+                **Calculation Steps:**
+                1. Query bulk indexing size metrics over 7 days
+                2. Calculate derivative to get rate (bytes/second)
+                3. Convert to MB/s for readability
+                4. Aggregate statistics: min, max, average
+                5. Calculate efficiency as avg/peak ratio
+                
+                **Interpretation:**
+                - **Average Rate:** Sustained indexing throughput
+                - **Peak Rate:** Maximum observed throughput
+                - **Efficiency:** How consistent the workload is (higher = more predictable)
+                """)
         else:
             st.warning("No indexing metrics available")
     
@@ -437,6 +464,30 @@ def display_performance_metrics(indexing_metrics, search_metrics, cpu_metrics):
             st.metric("Peak Rate", f"{stats['max_rate']:.1f} queries/sec")
             efficiency = (stats['avg_rate'] / stats['max_rate']) * 100
             st.metric("Efficiency", f"{efficiency:.1f}%", help="Average to peak ratio")
+            
+            # Collapsible calculation details
+            with st.expander("📋 Search Calculation Details"):
+                st.markdown("""
+                **Query Configuration:**
+                - **Time range:** 7 days (604,800 seconds)
+                - **Buckets:** 20 buckets (8.4 hours per bucket)
+                - **Metric:** `indices.search.fetch_total` (cumulative count)
+                - **Calculation:** Derivative to get queries/sec rate
+                - **Aggregation:** Max value per bucket, then sum across nodes
+                - **Data source:** All nodes in cluster
+                
+                **Calculation Steps:**
+                1. Query search fetch metrics over 7 days
+                2. Calculate derivative to get rate (queries/second)
+                3. Aggregate across all cluster nodes
+                4. Calculate statistics: min, max, average
+                5. Calculate efficiency as avg/peak ratio
+                
+                **Interpretation:**
+                - **Average Rate:** Sustained search throughput
+                - **Peak Rate:** Maximum observed search load
+                - **Efficiency:** Search load consistency (higher = more predictable)
+                """)
         else:
             st.warning("No search metrics available")
     
@@ -458,6 +509,32 @@ def display_performance_metrics(indexing_metrics, search_metrics, cpu_metrics):
                 interpretation = "🔴 Very High - Immediate scaling needed"
             
             st.metric("Status", interpretation)
+            
+            # Collapsible calculation details
+            with st.expander("📋 CPU Calculation Details"):
+                st.markdown("""
+                **Query Configuration:**
+                - **Time range:** 7 days (604,800 seconds)
+                - **Buckets:** 168 buckets (1 hour per bucket)
+                - **Metric:** `container.cpu.usage_in_thousands`
+                - **Calculation:** Average usage across nodes per time bucket
+                - **Aggregation:** Average across nodes, then stats across time
+                - **Data source:** `logging-*:elasticsearch-2*`
+                - **Filtering:** Excludes inactive nodes automatically
+                
+                **Calculation Steps:**
+                1. Query CPU usage metrics over 7 days
+                2. Filter out inactive/terminated nodes
+                3. Calculate average usage per time bucket
+                4. Aggregate statistics across all active nodes
+                5. Calculate min, max, and average utilization
+                
+                **Interpretation:**
+                - **< 30%:** Underutilized - potential cost savings
+                - **30-60%:** Well-balanced workload
+                - **60-80%:** High utilization - monitor for scaling needs
+                - **> 80%:** Very high - immediate scaling recommended
+                """)
         else:
             st.warning("No CPU metrics available")
 
@@ -526,6 +603,33 @@ def display_cost_analysis(stats_analysis, indexing_metrics, search_metrics,
         st.metric("Storage Tier", f"${storage_monthly_cost:.2f}", 
                  help=f"{primary_storage_gb:.1f} GB")
         st.metric("**Total**", f"**${total_monthly_cost:.2f}**")
+        
+        # Collapsible cost calculation details
+        with st.expander("📋 Cost Calculation Details"):
+            st.markdown(f"""
+            **Ingest Tier Calculation:**
+            - **Total Memory:** {total_memory_gb:.1f} GB
+            - **Ingest Ratio:** {ingest_ratio_percent:.1%} ({ingest_to_query_ratio['numeric_ratio']:.1f}%)
+            - **Avg-to-Peak Ratio:** {avg_to_peak_ratio:.3f}
+            - **CPU Utilization Factor:** {cpu_utilization_factor:.3f}
+            - **VCUs:** {total_memory_gb:.1f} × {ingest_ratio_percent:.3f} × {avg_to_peak_ratio:.3f} × {cpu_utilization_factor:.3f} = {ingest_tier_vcus:.1f}
+            - **Monthly Cost:** {ingest_tier_vcus:.1f} VCUs × ${vcu_hourly_cost:.3f}/hour × 24h × 30 days = ${ingest_monthly_cost:.2f}
+            
+            **Search Tier Calculation:**
+            - **Query Ratio:** {1.0 - ingest_ratio_percent:.1%}
+            - **Search Avg-to-Peak:** {search_avg_to_peak_ratio if search_metrics else 'N/A'}
+            - **VCUs:** {total_memory_gb:.1f} × {1.0 - ingest_ratio_percent:.3f} × {search_avg_to_peak_ratio if search_metrics else 0:.3f} × {cpu_utilization_factor:.3f} = {search_tier_vcus:.1f}
+            - **Monthly Cost:** {search_tier_vcus:.1f} VCUs × ${vcu_hourly_cost:.3f}/hour × 24h × 30 days = ${search_monthly_cost:.2f}
+            
+            **Storage Tier Calculation:**
+            - **Primary Storage:** {primary_storage_gb:.1f} GB
+            - **Monthly Cost:** {primary_storage_gb:.1f} GB × ${storage_cost_per_gb_month:.3f}/GB/month = ${storage_monthly_cost:.2f}
+            
+            **Key Factors:**
+            - **CPU Utilization Factor:** Adjusts VCU allocation based on actual CPU usage
+            - **Avg-to-Peak Ratio:** Accounts for workload variability (lower = more spiky)
+            - **Ingest/Query Split:** Based on actual cluster workload patterns
+            """)
     
     with col2:
         # Cost pie chart
@@ -548,14 +652,102 @@ def display_cost_analysis(stats_analysis, indexing_metrics, search_metrics,
     with col1:
         st.metric("Ingest to Query Ratio", ingest_to_query_ratio['ingest_ratio'])
         st.info(ingest_to_query_ratio['interpretation'])
+        
+        # Collapsible workload calculation details
+        with st.expander("📋 Workload Analysis Details"):
+            st.markdown(f"""
+            **Ingest to Query Ratio Calculation:**
+            - **Time range:** 7 days (NOW() - INTERVAL 7 DAY)
+            - **Data source:** `metrics-*:cluster-elasticsearch-*`
+            - **Filter:** `event.dataset = elasticsearch.node.stats`
+            - **Metrics:**
+              - Index time: `elasticsearch.node.stats.indices.indexing.index_time.ms`
+              - Query time: `elasticsearch.node.stats.indices.search.fetch_time.ms + query_time.ms`
+            - **Calculation:** `(total_index_time / total_query_time) × 100`
+            - **Aggregation:** Max per node, then sum across cluster
+            
+            **Result:** {ingest_to_query_ratio['numeric_ratio']:.1f}% ingest ratio
+            
+            **Interpretation:**
+            - **< 25%:** Query-heavy workload - prioritize search performance
+            - **25-150%:** Balanced workload - mixed indexing and querying
+            - **> 150%:** Ingest-heavy workload - prioritize indexing throughput
+            """)
     
     with col2:
         st.metric("Total Cluster Memory", f"{total_memory_gb:.1f} GB")
         st.metric("CPU Utilization Factor", f"{cpu_utilization_factor:.2f}")
+        
+        # Collapsible memory calculation details
+        with st.expander("📋 Memory Analysis Details"):
+            st.markdown(f"""
+            **Total Cluster Memory Calculation:**
+            - **Query:** Aggregates memory across all active cluster nodes
+            - **Source:** Node statistics from cluster metrics
+            - **Calculation:** Sum of allocated memory per node
+            - **Result:** {total_memory_gb:.1f} GB total cluster memory
+            
+            **CPU Utilization Factor:**
+            - **Purpose:** Adjusts VCU allocation based on actual usage
+            - **Calculation:** Average CPU usage ÷ 100
+            - **Value:** {cpu_utilization_factor:.3f} ({cpu_utilization_factor*100:.1f}% avg CPU)
+            - **Impact:** Reduces VCU allocation for underutilized clusters
+            
+            **Memory Distribution in ES3:**
+            - **Ingest Tier:** {total_memory_gb * ingest_ratio_percent:.1f} GB ({ingest_ratio_percent:.1%})
+            - **Search Tier:** {total_memory_gb * (1.0 - ingest_ratio_percent):.1f} GB ({1.0 - ingest_ratio_percent:.1%})
+            """)
+    
+    # Add overall methodology section
+    st.subheader("🔬 Analysis Methodology")
+    with st.expander("📋 Overall Analysis Methodology"):
+        st.markdown("""
+        **Data Collection Process:**
+        1. **Environment Data:** Cluster configuration and node information
+        2. **Statistics:** Document counts, storage, shard distribution
+        3. **Performance Metrics:** 7-day historical analysis of indexing, search, and CPU
+        4. **Cost Modeling:** ES3 VCU allocation based on workload patterns
+        
+        **Key Assumptions:**
+        - **Analysis Period:** 7 days of historical data for trend analysis
+        - **VCU Pricing:** $0.14/hour (configurable in advanced settings)
+        - **Storage Pricing:** $0.047/GB/month (configurable)
+        - **Efficiency Factors:** Account for workload variability and resource utilization
+        
+        **Calculation Accuracy:**
+        - **High Confidence:** Storage costs (based on actual usage)
+        - **Medium Confidence:** Compute costs (based on historical patterns)
+        - **Variables:** Actual ES3 performance may vary based on query complexity and data patterns
+        
+        **Recommendations:**
+        - Use this as a baseline estimate for migration planning
+        - Consider running a proof-of-concept for precise validation
+        - Monitor actual ES3 usage after migration for optimization opportunities
+        """)
 
 def display_charts(indexing_metrics, search_metrics, cpu_metrics):
     """Display performance charts"""
     st.header("📈 Performance Charts")
+    
+    # Add chart methodology details
+    with st.expander("📋 Chart Data Sources & Methodology"):
+        st.markdown("""
+        **Chart Data Sources:**
+        - **Indexing Rates:** `elasticsearch.index.total.bulk.total_size_in_bytes` over 7 days, 168 hourly buckets
+        - **Search Rates:** `indices.search.fetch_total` over 7 days, 20 buckets (8.4h each)
+        - **CPU Utilization:** `container.cpu.usage_in_thousands` over 7 days, 168 hourly buckets
+        - **Efficiency Metrics:** Calculated as average-to-peak ratios for each metric
+        
+        **Chart Interpretation:**
+        - **Min/Avg/Max Bars:** Show the range of performance over the analysis period
+        - **Efficiency Comparison:** Higher percentages indicate more consistent workloads
+        - **Time Aggregation:** Data is aggregated across all active cluster nodes
+        
+        **Data Quality:**
+        - Inactive nodes are automatically excluded from CPU metrics
+        - Derivative calculations smooth out cumulative counter resets
+        - Missing data points are interpolated where possible
+        """)
     
     # Create subplots for different metrics
     if indexing_metrics or search_metrics or cpu_metrics:
