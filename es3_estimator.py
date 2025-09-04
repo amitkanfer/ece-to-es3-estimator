@@ -1538,8 +1538,10 @@ def main():
                 # Use actual CPU utilization percentage (e.g., 54.1% = 0.541)
                 cpu_utilization_factor = avg_cpu_usage / 100.0 if avg_cpu_usage > 0 else 1.0
             
-            # Calculate ingest tier VCUs using average rate and CPU factor: total cluster memory * ingest ratio * avg_to_peak_ratio * cpu_factor
-            ingest_tier_vcus = total_memory_gb * ingest_ratio_percent * avg_to_peak_ratio * cpu_utilization_factor
+            # Calculate ingest tier VCUs using correct proportional logic
+            # Convert ingest ratio to proper proportion: ingest_proportion = ingest_ratio/(1+ingest_ratio)
+            ingest_proportion = ingest_ratio_percent / (1.0 + ingest_ratio_percent)
+            ingest_tier_vcus = total_memory_gb * ingest_proportion * avg_to_peak_ratio * cpu_utilization_factor
             
             # Cost calculation: $0.14 per VCU per hour
             vcu_hourly_cost = 0.14
@@ -1550,6 +1552,7 @@ def main():
             print(f"\n💰 **INGEST TIER ESTIMATION:**")
             print(f"  └─ Total Cluster Memory: {total_memory_gb:.1f} GB")
             print(f"  └─ Ingest Ratio: {ingest_ratio_percent:.3f} ({ratio_data['ingest_ratio']})")
+            print(f"  └─ Ingest Proportion: {ingest_proportion:.3f} ({ingest_proportion*100:.1f}% of total workload)")
             print(f"  └─ Avg to Peak Ratio: {avg_to_peak_ratio:.3f}")
             print(f"  └─ CPU Utilization Factor: {cpu_utilization_factor:.2f}")
             print(f"  └─ Estimated Ingest VCUs: {ingest_tier_vcus:.1f} VCUs")
@@ -1559,10 +1562,15 @@ def main():
             print(f"  └─ **Monthly Cost: ${monthly_cost:.2f}**")
             print(f"  └─ Note: Includes CPU utilization factor based on {cpu_stats['avg_usage']:.1f}% average CPU usage")
             
-            # Calculate Search Tier VCUs and cost using query portion of the ratio
+            # Calculate Search Tier VCUs and cost using correct proportional logic
             if search_metrics:
                 search_stats = search_metrics['cluster_stats']
-                query_ratio_percent = 1.0 - ingest_ratio_percent  # Query portion (76% = 100% - 24%)
+                # Convert ingest ratio to proper proportions
+                # If ingest_ratio = indexing_time/search_time = 1.08, then:
+                # indexing_proportion = 1.08/(1+1.08) = 0.519, search_proportion = 1/(1+1.08) = 0.481
+                ingest_ratio_decimal = ingest_ratio_percent  # Already in decimal form (1.08)
+                search_ratio_percent = 1.0 / (1.0 + ingest_ratio_decimal)  # Search proportion
+                query_ratio_percent = search_ratio_percent  # For display consistency
                 search_avg_to_peak_ratio = search_stats['avg_rate'] / search_stats['max_rate']
                 
                 # Use the same CPU utilization factor for search tier
@@ -1578,7 +1586,7 @@ def main():
                 
                 print(f"\n🔍 **SEARCH TIER ESTIMATION:**")
                 print(f"  └─ Total Cluster Memory: {total_memory_gb:.1f} GB")
-                print(f"  └─ Query Ratio: {query_ratio_percent:.3f} ({query_ratio_percent*100:.1f}%)")
+                print(f"  └─ Search Proportion: {search_ratio_percent:.3f} ({search_ratio_percent*100:.1f}% of total workload)")
                 print(f"  └─ Search Avg to Peak Ratio: {search_avg_to_peak_ratio:.3f}")
                 print(f"  └─ CPU Utilization Factor: {search_cpu_utilization_factor:.2f}")
                 print(f"  └─ Estimated Search VCUs: {search_tier_vcus:.1f} VCUs")
