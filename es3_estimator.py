@@ -13,7 +13,7 @@ import sys
 from datetime import datetime, timezone, timedelta
 
 # Version information
-VERSION = "1.2.4"  # Added fallback mechanism for indexing metrics when bulk data unavailable
+VERSION = "1.2.5"  # Added CPU stale data detection and informative user messaging
 
 class ES3Estimator:
     def __init__(self, api_key, verbose=False):
@@ -750,6 +750,55 @@ class ES3Estimator:
         
         return inactive_nodes
 
+    def _check_cpu_data_availability(self, cluster_id):
+        """
+        Check if CPU data exists for the cluster and return latest timestamp info
+        """
+        latest_query = {
+            "size": 1,
+            "sort": [{"@timestamp": {"order": "desc"}}],
+            "query": {
+                "bool": {
+                    "must": [
+                        {"match_phrase": {"ece.cluster": cluster_id}},
+                        {"exists": {"field": "container.cpu.usage_in_thousands"}}
+                    ]
+                }
+            },
+            "_source": ["@timestamp", "container.cpu.usage_in_thousands"]
+        }
+        
+        endpoint = f"{self.base_url}/logging-*:elasticsearch-2*/_search"
+        result = self._make_api_request(endpoint, latest_query)
+        
+        if not result or not result.get('hits', {}).get('hits'):
+            return None
+            
+        # Get latest timestamp
+        hit = result['hits']['hits'][0]
+        latest_timestamp = hit['_source']['@timestamp']
+        
+        # Get total count
+        count_query = {
+            "size": 0,
+            "query": {
+                "bool": {
+                    "must": [
+                        {"match_phrase": {"ece.cluster": cluster_id}},
+                        {"exists": {"field": "container.cpu.usage_in_thousands"}}
+                    ]
+                }
+            }
+        }
+        
+        count_result = self._make_api_request(endpoint, count_query)
+        total_records = count_result.get('hits', {}).get('total', {}).get('value', 0) if count_result else 0
+        
+        return {
+            'latest_timestamp': latest_timestamp,
+            'total_records': total_records
+        }
+
     def fetch_cpu_utilization_metrics(self, cluster_id, inactive_nodes=None):
         """
         Fetch CPU utilization metrics for the last 7 days, excluding inactive nodes
@@ -757,6 +806,49 @@ class ES3Estimator:
         # Calculate 7 days ago timestamp
         now = datetime.now(timezone.utc)
         seven_days_ago = now - timedelta(days=7)
+        
+        # First, check if CPU data exists and when it was last updated
+        latest_cpu_data = self._check_cpu_data_availability(cluster_id)
+        if not latest_cpu_data:
+            if self.verbose:
+                print("❌ No CPU data found for this cluster")
+            return None
+            
+        latest_timestamp_str = latest_cpu_data.get('latest_timestamp')
+        total_records = latest_cpu_data.get('total_records', 0)
+        
+        if self.verbose:
+            print(f"🔍 CPU data check: {total_records} records found, latest: {latest_timestamp_str}")
+        
+        # Parse the latest timestamp
+        try:
+            # Handle both Z and timezone-aware formats
+            if latest_timestamp_str.endswith('Z'):
+                latest_timestamp = datetime.fromisoformat(latest_timestamp_str.replace('Z', '+00:00'))
+            else:
+                latest_timestamp = datetime.fromisoformat(latest_timestamp_str)
+            
+            # Ensure both timestamps are timezone-aware
+            if latest_timestamp.tzinfo is None:
+                latest_timestamp = latest_timestamp.replace(tzinfo=timezone.utc)
+                
+            age_days = (now - latest_timestamp).total_seconds() / 86400  # Convert to days
+            
+            if age_days > 7:
+                if self.verbose:
+                    print(f"⚠️ CPU data is {age_days:.1f} days old (beyond 7-day window)")
+                # Return info about stale data instead of None
+                return {
+                    'status': 'stale',
+                    'latest_timestamp': latest_timestamp_str,
+                    'age_days': age_days,
+                    'total_records': total_records,
+                    'message': f"CPU data is {age_days:.1f} days old (last updated: {latest_timestamp_str})"
+                }
+        except Exception as e:
+            if self.verbose:
+                print(f"⚠️ Error parsing CPU timestamp: {e}")
+            return None
         
         # Query logging-*:elasticsearch-2* for container CPU usage over last 7 days
         cpu_query = {
@@ -1770,42 +1862,49 @@ def main():
     print("="*60)
     
     if cpu_metrics:
-        stats = cpu_metrics['cluster_stats']
-        
-        # Add query configuration description
-        print("🔍 Query Configuration:")
-        print("  └─ Time range: 7 days (604,800 seconds)")
-        print("  └─ Buckets: 168 buckets")
-        print("  └─ Bucket duration: 1 hour (3,600 seconds) per bucket")
-        print("  └─ Metric: container.cpu.usage_in_thousands")
-        print("  └─ Calculation: Average usage across nodes per time bucket")
-        print("  └─ Aggregation: Average across nodes, then stats across time")
-        print("  └─ Data source: logging-*:elasticsearch-2*")
-        
-        # Show excluded inactive nodes if any
-        if stats.get('excluded_inactive_nodes'):
-            print(f"  └─ Excluded inactive nodes: {', '.join(stats['excluded_inactive_nodes'])}")
-        
-        print(f"🖥️  Min usage: {stats['min_usage']:.1f}%")
-        print(f"🖥️  Max usage: {stats['max_usage']:.1f}%")
-        print(f"🖥️  Avg usage: {stats['avg_usage']:.1f}%")
-        print(f"📊 Data points: {stats['total_data_points']} across {stats['node_count']} nodes")
-        
-        # Calculate average to peak ratio
-        avg_to_peak_ratio = stats['avg_usage'] / stats['max_usage']
-        print(f"📊 Avg to Peak ratio: {avg_to_peak_ratio:.3f} ({stats['avg_usage']:.1f}%/{stats['max_usage']:.1f}%)")
-        
-        # Add CPU utilization interpretation
-        if stats['avg_usage'] < 30:
-            cpu_interpretation = "Low CPU utilization - underutilized resources"
-        elif stats['avg_usage'] < 60:
-            cpu_interpretation = "Moderate CPU utilization - well-balanced workload"
-        elif stats['avg_usage'] < 80:
-            cpu_interpretation = "High CPU utilization - consider scaling up"
+        # Check if CPU data is stale
+        if cpu_metrics.get('status') == 'stale':
+            print(f"⚠️  CPU data is stale: {cpu_metrics['message']}")
+            print(f"📊 Total CPU records available: {cpu_metrics['total_records']:,}")
+            print(f"⏰ Data age: {cpu_metrics['age_days']:.1f} days old")
+            print("💡 Note: Using default CPU utilization factor (1.0) for cost calculations")
         else:
-            cpu_interpretation = "Very high CPU utilization - immediate scaling recommended"
-        
-        print(f"💡 CPU Interpretation: {cpu_interpretation}")
+            stats = cpu_metrics['cluster_stats']
+            
+            # Add query configuration description
+            print("🔍 Query Configuration:")
+            print("  └─ Time range: 7 days (604,800 seconds)")
+            print("  └─ Buckets: 168 buckets")
+            print("  └─ Bucket duration: 1 hour (3,600 seconds) per bucket")
+            print("  └─ Metric: container.cpu.usage_in_thousands")
+            print("  └─ Calculation: Average usage across nodes per time bucket")
+            print("  └─ Aggregation: Average across nodes, then stats across time")
+            print("  └─ Data source: logging-*:elasticsearch-2*")
+            
+            # Show excluded inactive nodes if any
+            if stats.get('excluded_inactive_nodes'):
+                print(f"  └─ Excluded inactive nodes: {', '.join(stats['excluded_inactive_nodes'])}")
+            
+            print(f"🖥️  Min usage: {stats['min_usage']:.1f}%")
+            print(f"🖥️  Max usage: {stats['max_usage']:.1f}%")
+            print(f"🖥️  Avg usage: {stats['avg_usage']:.1f}%")
+            print(f"📊 Data points: {stats['total_data_points']} across {stats['node_count']} nodes")
+            
+            # Calculate average to peak ratio
+            avg_to_peak_ratio = stats['avg_usage'] / stats['max_usage']
+            print(f"📊 Avg to Peak ratio: {avg_to_peak_ratio:.3f} ({stats['avg_usage']:.1f}%/{stats['max_usage']:.1f}%)")
+            
+            # Add CPU utilization interpretation
+            if stats['avg_usage'] < 30:
+                cpu_interpretation = "Low CPU utilization - underutilized resources"
+            elif stats['avg_usage'] < 60:
+                cpu_interpretation = "Moderate CPU utilization - well-balanced workload"
+            elif stats['avg_usage'] < 80:
+                cpu_interpretation = "High CPU utilization - consider scaling up"
+            else:
+                cpu_interpretation = "Very high CPU utilization - immediate scaling recommended"
+            
+            print(f"💡 CPU Interpretation: {cpu_interpretation}")
     else:
         print("❌ No CPU utilization metrics available")
     
@@ -1867,7 +1966,10 @@ def main():
             print(f"  └─ Hourly Cost: ${hourly_cost:.2f}")
             print(f"  └─ Daily Cost: ${daily_cost:.2f}")
             print(f"  └─ **Monthly Cost: ${monthly_cost:.2f}**")
-            print(f"  └─ Note: Includes CPU utilization factor based on {cpu_stats['avg_usage']:.1f}% average CPU usage")
+            if cpu_metrics and cpu_metrics.get('cluster_stats'):
+                print(f"  └─ Note: Includes CPU utilization factor based on {cpu_stats['avg_usage']:.1f}% average CPU usage")
+            else:
+                print(f"  └─ Note: Using default CPU utilization factor (no CPU metrics available)")
             
             # Calculate Search Tier VCUs and cost using correct proportional logic
             if search_metrics:
@@ -1901,7 +2003,10 @@ def main():
                 print(f"  └─ Hourly Cost: ${search_hourly_cost:.2f}")
                 print(f"  └─ Daily Cost: ${search_daily_cost:.2f}")
                 print(f"  └─ **Monthly Cost: ${search_monthly_cost:.2f}**")
-                print(f"  └─ Note: Includes CPU utilization factor based on {cpu_stats['avg_usage']:.1f}% average CPU usage")
+                if cpu_metrics and cpu_metrics.get('cluster_stats'):
+                    print(f"  └─ Note: Includes CPU utilization factor based on {cpu_stats['avg_usage']:.1f}% average CPU usage")
+                else:
+                    print(f"  └─ Note: Using default CPU utilization factor (no CPU metrics available)")
                 
                 # Calculate Storage Tier cost using primary storage
                 if stats_analysis and stats_analysis.get('latest_primary_storage_gb'):
