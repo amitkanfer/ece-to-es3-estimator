@@ -13,7 +13,7 @@ import sys
 from datetime import datetime, timezone, timedelta
 
 # Version information
-VERSION = "1.2.3"  # Separated calculation logic from UI - no math in Streamlit UI
+VERSION = "1.2.4"  # Added fallback mechanism for indexing metrics when bulk data unavailable
 
 class ES3Estimator:
     def __init__(self, api_key, verbose=False):
@@ -331,7 +331,7 @@ class ES3Estimator:
 
     def fetch_indexing_metrics(self, cluster_id):
         """
-        Fetch bulk ingest rate metrics for the last 7 days
+        Fetch bulk ingest rate metrics for the last 7 days with fallback to document indexing
         """
         # Calculate 7 days ago timestamp
         now = datetime.now(timezone.utc)
@@ -423,12 +423,208 @@ class ES3Estimator:
         
         endpoint = f"{self.base_url}/metrics-*:cluster-elasticsearch-*/_search"
         
+        # Try bulk metrics first
         data = self._make_api_request(endpoint, indexing_query)
+        if data:
+            result = self.process_indexing_metrics(data)
+            if result:  # If bulk metrics worked, return them
+                if self.verbose:
+                    print("✅ Using bulk indexing metrics")
+                return result
+        
+        # Fallback to document indexing metrics if bulk failed or returned no data
+        if self.verbose:
+            print("⚠️ Bulk metrics unavailable, falling back to document indexing metrics")
+        
+        return self._fetch_document_indexing_metrics(cluster_id)
+    
+    def _fetch_document_indexing_metrics(self, cluster_id):
+        """
+        Fallback method: Fetch document indexing metrics when bulk metrics are unavailable
+        Uses elasticsearch.index.total.indexing.index_total with estimated document size
+        """
+        # Calculate 7 days ago timestamp
+        now = datetime.now(timezone.utc)
+        seven_days_ago = now - timedelta(days=7)
+        
+        # Query for document indexing metrics
+        doc_indexing_query = {
+            "size": 0,
+            "query": {
+                "bool": {
+                    "must": [
+                        {
+                            "term": {
+                                "ece.cluster": cluster_id
+                            }
+                        },
+                        {
+                            "range": {
+                                "@timestamp": {
+                                    "gte": seven_days_ago.strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
+                                    "lte": now.strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
+                                    "format": "strict_date_optional_time",
+                                }
+                            }
+                        },
+                        {
+                            "term": {
+                                "event.dataset": "elasticsearch.index"
+                            }
+                        },
+                        {
+                            "exists": {
+                                "field": "elasticsearch.index.total.indexing.index_total"
+                            }
+                        },
+                    ],
+                }
+            },
+            "aggs": {
+                "nodes": {
+                    "terms": {
+                        "field": "ece.instance",
+                        "size": 200,
+                        "order": {"_count": "desc"},
+                    },
+                    "aggs": {
+                        "timeseries": {
+                            "date_histogram": {
+                                "field": "@timestamp",
+                                "min_doc_count": 0,
+                                "time_zone": "UTC",
+                                "extended_bounds": {
+                                    "min": int(seven_days_ago.timestamp() * 1000),
+                                    "max": int(now.timestamp() * 1000),
+                                },
+                                # 1 hour buckets for smoother derivative
+                                "fixed_interval": "3600s",
+                            },
+                            "aggs": {
+                                "doc_total_max": {
+                                    "max": {
+                                        "field": "elasticsearch.index.total.indexing.index_total"
+                                    }
+                                },
+                                "doc_total_deriv": {
+                                    "derivative": {
+                                        "buckets_path": "doc_total_max",
+                                        "gap_policy": "skip",
+                                        # normalize derivative to per-second
+                                        "unit": "1s",
+                                    }
+                                },
+                                "indexing_rate_sec": {
+                                    "bucket_script": {
+                                        "buckets_path": {
+                                            "doc_rate": "doc_total_deriv[normalized_value]"
+                                        },
+                                        # Estimate bytes: assume 1KB per document, convert docs/sec to bytes/sec
+                                        "script": {"source": "params.doc_rate != null && params.doc_rate > 0.0 ? params.doc_rate * 1024.0 : 0.0", "lang": "painless"},
+                                        "gap_policy": "skip",
+                                    }
+                                },
+                            },
+                        }
+                    },
+                }
+            },
+            "runtime_mappings": {},
+        }
+        
+        endpoint = f"{self.base_url}/metrics-*:cluster-elasticsearch-*/_search"
+        
+        data = self._make_api_request(endpoint, doc_indexing_query)
         if not data:
             return None
             
-        return self.process_indexing_metrics(data)
+        return self._process_document_indexing_metrics(data)
     
+    def _process_document_indexing_metrics(self, data):
+        """
+        Process document indexing metrics (fallback method)
+        Similar to process_indexing_metrics but looks for 'indexing_rate_sec' instead of 'bulk_rate_sec'
+        """
+        try:
+            nodes_agg = data.get('aggregations', {}).get('nodes', {}).get('buckets', [])
+            
+            if not nodes_agg:
+                return None
+            
+            # Collect all time buckets from all nodes
+            time_buckets = {}
+            node_stats = {}
+            
+            for node_bucket in nodes_agg:
+                node_name = node_bucket['key']
+                timeseries = node_bucket.get('timeseries', {}).get('buckets', [])
+                
+                node_rates = []
+                for time_bucket in timeseries:
+                    timestamp = time_bucket['key']
+                    rate_value = time_bucket.get('indexing_rate_sec', {}).get('value')
+                    
+                    if rate_value is not None and rate_value > 0:
+                        node_rates.append(rate_value)
+                        
+                        # Add to time bucket for cluster total calculation
+                        if timestamp not in time_buckets:
+                            time_buckets[timestamp] = []
+                        time_buckets[timestamp].append(rate_value)
+                
+                if node_rates:
+                    node_stats[node_name] = {
+                        'min_rate': min(node_rates),
+                        'max_rate': max(node_rates),
+                        'avg_rate': sum(node_rates) / len(node_rates),
+                        'data_points': len(node_rates)
+                    }
+            
+            # Calculate cluster totals for each time period
+            cluster_totals = []
+            for timestamp, rates in time_buckets.items():
+                if rates:  # Only include time periods with data
+                    cluster_total = sum(rates)
+                    cluster_totals.append(cluster_total)
+            
+            if not cluster_totals:
+                return None
+            
+            # Calculate stats in bytes/sec (estimated from document count)
+            min_bps = min(cluster_totals)
+            max_bps = max(cluster_totals)
+            avg_bps = sum(cluster_totals) / len(cluster_totals)
+            
+            # Convert to MB/sec
+            mib_div = 1024.0 * 1024.0
+            min_mbps = min_bps / mib_div
+            max_mbps = max_bps / mib_div
+            avg_mbps = avg_bps / mib_div
+            
+            cluster_stats = {
+                'min_rate': min_bps,
+                'max_rate': max_bps,
+                'avg_rate': avg_bps,
+                'min_rate_mbps': min_mbps,
+                'max_rate_mbps': max_mbps,
+                'avg_rate_mbps': avg_mbps,
+                'total_data_points': len(cluster_totals),
+                'node_count': len([n for n in node_stats if node_stats[n]['data_points'] > 0]),
+                'data_source': 'document_indexing_fallback',  # Indicator that this is estimated
+                'estimated': True  # Flag to indicate this is estimated data
+            }
+            
+            return {
+                'cluster_stats': cluster_stats,
+                'node_stats': node_stats,
+                'method': 'document_indexing_fallback'
+            }
+            
+        except Exception as e:
+            if self.verbose:
+                print(f"Document indexing metrics processing error: {e}")
+            return None
+
     def process_indexing_metrics(self, data):
         """
         Process bulk ingest metrics and calculate min, max, average rates in bytes/sec and MB/sec
@@ -1512,10 +1708,19 @@ def main():
         print("  └─ Time range: 7 days (604,800 seconds)")
         print("  └─ Buckets: 168 buckets")
         print("  └─ Bucket duration: 1 hour (3,600 seconds) per bucket")
-        print("  └─ Metric: elasticsearch.index.total.bulk.total_size_in_bytes (cumulative)")
-        print("  └─ Calculation: Derivative to get bytes/sec rate")
+        
+        # Check if this is fallback method
+        if indexing_metrics.get('method') == 'document_indexing_fallback':
+            print("  └─ Metric: elasticsearch.index.total.indexing.index_total (document count)")
+            print("  └─ Calculation: Derivative to get docs/sec, estimated as bytes/sec (1KB/doc)")
+            print("  └─ Data source: Document indexing fallback (bulk metrics unavailable)")
+        else:
+            print("  └─ Metric: elasticsearch.index.total.bulk.total_size_in_bytes (cumulative)")
+            print("  └─ Calculation: Derivative to get bytes/sec rate")
+            print("  └─ Data source: Bulk indexing metrics")
+        
         print("  └─ Aggregation: Max value per bucket, then sum across nodes")
-        print("  └─ Data source: metrics-*:cluster-elasticsearch-*")
+        print("  └─ Data source index: metrics-*:cluster-elasticsearch-*")
         
         print(f"📦 Min rate: {stats['min_rate']:.2f} B/s")
         print(f"📦 Max rate: {stats['max_rate']:.2f} B/s")
