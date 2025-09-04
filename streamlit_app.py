@@ -101,7 +101,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 def main():
-    # Header
+    # Header - force refresh for v1.2.4
     st.title(f"ES3 Cost Estimator v{VERSION}")
     st.markdown("Analyze your Elasticsearch cluster and estimate ES3 serverless costs")
     
