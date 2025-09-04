@@ -13,8 +13,9 @@ import sys
 from datetime import datetime, timezone, timedelta
 
 class ES3Estimator:
-    def __init__(self, api_key):
+    def __init__(self, api_key, verbose=False):
         self.api_key = api_key
+        self.verbose = verbose
         self.base_url = "https://overview-elastic-cloud-com.es.us-east-1.aws.found.io"
 
     def _make_api_request(self, endpoint, query_data=None, method='POST'):
@@ -1060,21 +1061,39 @@ class ES3Estimator:
         now = datetime.now(timezone.utc)
         seven_days_ago = now - timedelta(days=7)
         
+        # Use shorter time window to avoid timeouts - 1 day instead of 7
+        one_day_ago = now - timedelta(days=1)
         esql_query = f"""
 FROM metrics-*:cluster-elasticsearch-* 
-| WHERE ece.cluster:"{cluster_id}" AND event.dataset:"elasticsearch.node.stats" AND @timestamp >= "{seven_days_ago.strftime('%Y-%m-%dT%H:%M:%S.%fZ')}"
-| STATS max_node_query_time = MAX(elasticsearch.node.stats.indices.search.fetch_time.ms + elasticsearch.node.stats.indices.search.fetch_time.ms),max_node_index_time = MAX(elasticsearch.node.stats.indices.indexing.index_time.ms) BY elasticsearch.node.name 
-| STATS total_query_time = SUM(max_node_query_time), total_index_time = SUM(max_node_index_time) 
-| EVAL ingest_ratio = CONCAT(TO_STRING(CEIL(total_index_time::double / total_query_time::double * 100.0)), "%")
+| WHERE ece.cluster:"{cluster_id}" AND event.dataset:"elasticsearch.node.stats" AND @timestamp >= "{one_day_ago.strftime('%Y-%m-%dT%H:%M:%S.%fZ')}"
+| STATS 
+    avg_fetch_time = AVG(elasticsearch.node.stats.indices.search.fetch_time.ms),
+    avg_query_time = AVG(elasticsearch.node.stats.indices.search.query_time.ms),
+    avg_index_time = AVG(elasticsearch.node.stats.indices.indexing.index_time.ms)
+| EVAL total_search_time = COALESCE(avg_fetch_time, 0) + COALESCE(avg_query_time, 0)
+| EVAL ingest_ratio = CASE(
+    total_search_time > 0,
+    CONCAT(TO_STRING(ROUND(COALESCE(avg_index_time, 0) / total_search_time * 100.0)), "%"),
+    "N/A"
+)
 | KEEP ingest_ratio
-| LIMIT 10
+| LIMIT 1
 """
         
         endpoint = f"{self.base_url}/_query"
         
+        if self.verbose:
+            print(f"🔍 ESQL Query for ingest-to-query ratio:")
+            print(esql_query)
+        
         data = self._make_api_request(endpoint, {"query": esql_query})
         if not data:
+            if self.verbose:
+                print("❌ No data returned from ingest-to-query ratio query")
             return None
+            
+        if self.verbose:
+            print(f"✅ Ingest-to-query ratio data received: {data}")
             
         return self.process_ingest_to_query_ratio(data)
 
@@ -1298,7 +1317,7 @@ def main():
         print()
     
     # Initialize estimator
-    estimator = ES3Estimator(api_key)
+    estimator = ES3Estimator(api_key, args.verbose)
     
     print("📡 Fetching cluster data...")
     # Initialize all variables
