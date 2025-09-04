@@ -1061,11 +1061,11 @@ class ES3Estimator:
         now = datetime.now(timezone.utc)
         seven_days_ago = now - timedelta(days=7)
         
-        # Use 3-day time window to balance data coverage and performance
-        three_days_ago = now - timedelta(days=3)
+        # Use 1-day time window to avoid timeouts while still getting meaningful data
+        one_day_ago = now - timedelta(days=1)
         esql_query = f"""
 FROM metrics-*:cluster-elasticsearch-* 
-| WHERE ece.cluster:"{cluster_id}" AND event.dataset:"elasticsearch.node.stats" AND @timestamp >= "{three_days_ago.strftime('%Y-%m-%dT%H:%M:%S.%fZ')}"
+| WHERE ece.cluster:"{cluster_id}" AND event.dataset:"elasticsearch.node.stats" AND @timestamp >= "{one_day_ago.strftime('%Y-%m-%dT%H:%M:%S.%fZ')}"
 | STATS 
     avg_fetch_time = AVG(elasticsearch.node.stats.indices.search.fetch_time.ms),
     avg_query_time = AVG(elasticsearch.node.stats.indices.search.query_time.ms),
@@ -1509,7 +1509,7 @@ def main():
     if ingest_to_query_ratio:
         ratio_data = ingest_to_query_ratio
         print("🔍 Query Configuration:")
-        print("  └─ Time range: 3 days (last 72 hours)")
+        print("  └─ Time range: 1 day (last 24 hours)")
         print("  └─ Data source: metrics-*:cluster-elasticsearch-*")
         print("  └─ Filter: event.dataset = elasticsearch.node.stats")
         print("  └─ Metrics: elasticsearch.node.stats.indices.indexing.index_time.ms")
