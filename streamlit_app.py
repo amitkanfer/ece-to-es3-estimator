@@ -516,21 +516,29 @@ def display_performance_metrics(indexing_metrics, search_metrics, cpu_metrics):
     with col3:
         st.subheader("🖥️ CPU Utilization")
         if cpu_metrics:
-            stats = cpu_metrics['cluster_stats']
-            st.metric("Average CPU", f"{stats['avg_usage']:.1f}%")
-            st.metric("Peak CPU", f"{stats['max_usage']:.1f}%")
-            
-            # CPU interpretation
-            if stats['avg_usage'] < 30:
-                interpretation = "🟢 Low - Underutilized"
-            elif stats['avg_usage'] < 60:
-                interpretation = "🟡 Moderate - Well-balanced"
-            elif stats['avg_usage'] < 80:
-                interpretation = "🟠 High - Consider scaling"
+            if cpu_metrics.get('status') == 'stale':
+                st.warning(f"⚠️ CPU data is {cpu_metrics['age_days']:.1f} days old")
+                st.info(f"Last updated: {cpu_metrics['latest_timestamp']}")
+                st.metric("Records Available", f"{cpu_metrics['total_records']:,}")
             else:
-                interpretation = "🔴 Very High - Immediate scaling needed"
+                stats = cpu_metrics['cluster_stats']
+                st.metric("Average CPU", f"{stats['avg_usage']:.1f}%")
+                st.metric("Peak CPU", f"{stats['max_usage']:.1f}%")
             
-            st.metric("Status", interpretation)
+            # CPU interpretation (only for non-stale data)
+            if cpu_metrics.get('status') != 'stale':
+                if stats['avg_usage'] < 30:
+                    interpretation = "🟢 Low - Underutilized"
+                elif stats['avg_usage'] < 60:
+                    interpretation = "🟡 Moderate - Well-balanced"
+                elif stats['avg_usage'] < 80:
+                    interpretation = "🟠 High - Consider scaling"
+                else:
+                    interpretation = "🔴 Very High - Immediate scaling needed"
+                
+                st.metric("Status", interpretation)
+            else:
+                st.metric("Status", "⚠️ Data Stale - Using Default Factor")
             
             # Collapsible calculation details
             with st.expander("📋 CPU Calculation Details"):
@@ -681,7 +689,7 @@ def display_cost_analysis(stats_analysis, indexing_metrics, search_metrics,
     
     # CPU utilization factor
     cpu_utilization_factor = 1.0
-    if cpu_metrics:
+    if cpu_metrics and cpu_metrics.get('status') != 'stale':
         cpu_stats = cpu_metrics['cluster_stats']
         cpu_utilization_factor = cpu_stats['avg_usage'] / 100.0
     
@@ -916,7 +924,7 @@ def display_charts(indexing_metrics, search_metrics, cpu_metrics):
             )
         
         # CPU utilization
-        if cpu_metrics:
+        if cpu_metrics and cpu_metrics.get('status') != 'stale':
             stats = cpu_metrics['cluster_stats']
             fig.add_trace(
                 go.Bar(
@@ -944,7 +952,7 @@ def display_charts(indexing_metrics, search_metrics, cpu_metrics):
             efficiencies.append(eff)
             labels.append('Search')
         
-        if cpu_metrics:
+        if cpu_metrics and cpu_metrics.get('status') != 'stale':
             stats = cpu_metrics['cluster_stats']
             eff = (stats['avg_usage'] / stats['max_usage']) * 100
             efficiencies.append(eff)
@@ -983,14 +991,16 @@ def display_summary(data, config):
     
     # CPU recommendations
     cpu_metrics = data['cpu_metrics']
-    if cpu_metrics:
+    if cpu_metrics and cpu_metrics.get('status') != 'stale':
         avg_cpu = cpu_metrics['cluster_stats']['avg_usage']
         if avg_cpu < 30:
             recommendations.append("🔽 CPU underutilized - consider rightsizing for cost savings")
         elif avg_cpu > 80:
             recommendations.append("🔼 High CPU usage - plan for capacity scaling")
-        else:
-            recommendations.append("✅ CPU utilization is well-balanced")
+    elif cpu_metrics and cpu_metrics.get('status') == 'stale':
+        recommendations.append("⚠️ CPU monitoring data is stale - consider enabling fresh monitoring for better insights")
+    else:
+        recommendations.append("✅ CPU utilization is well-balanced")
     
     # Workload recommendations
     ingest_to_query_ratio = data['ingest_to_query_ratio']
@@ -1021,7 +1031,7 @@ def display_summary(data, config):
             'performance_metrics': {
                 'indexing': data['indexing_metrics']['cluster_stats'] if data['indexing_metrics'] else None,
                 'search': data['search_metrics']['cluster_stats'] if data['search_metrics'] else None,
-                'cpu': data['cpu_metrics']['cluster_stats'] if data['cpu_metrics'] else None,
+                'cpu': data['cpu_metrics']['cluster_stats'] if (data['cpu_metrics'] and data['cpu_metrics'].get('status') != 'stale') else None,
             },
             'cost_analysis': {
                 'ingest_to_query_ratio': ingest_to_query_ratio,

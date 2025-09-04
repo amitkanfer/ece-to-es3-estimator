@@ -13,7 +13,7 @@ import sys
 from datetime import datetime, timezone, timedelta
 
 # Version information
-VERSION = "1.2.5"  # Added CPU stale data detection and informative user messaging
+VERSION = "1.2.6"  # Fixed Streamlit UI to handle CPU stale data structure
 
 class ES3Estimator:
     def __init__(self, api_key, verbose=False):
