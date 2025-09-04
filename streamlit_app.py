@@ -312,6 +312,12 @@ def run_cluster_analysis(estimator, cluster_id, progress_placeholder):
         ingest_to_query_ratio = estimator.fetch_ingest_to_query_ratio(cluster_id)
         total_cluster_memory = estimator.fetch_total_cluster_memory(cluster_id)
         
+        # Calculate costs using the Python script's logic (no math in UI!)
+        cost_analysis = estimator.calculate_costs(
+            indexing_metrics, search_metrics, cpu_metrics,
+            ingest_to_query_ratio, total_cluster_memory
+        )
+        
         # Store results
         results['data'] = {
             'stats_analysis': stats_analysis,
@@ -320,6 +326,7 @@ def run_cluster_analysis(estimator, cluster_id, progress_placeholder):
             'cpu_metrics': cpu_metrics,
             'ingest_to_query_ratio': ingest_to_query_ratio,
             'total_cluster_memory': total_cluster_memory,
+            'cost_analysis': cost_analysis,
             'environment_data': environment_data
         }
         
@@ -339,6 +346,7 @@ def display_results(data, config, cluster_id):
     cpu_metrics = data['cpu_metrics']
     ingest_to_query_ratio = data['ingest_to_query_ratio']
     total_cluster_memory = data['total_cluster_memory']
+    cost_analysis = data['cost_analysis']
     
     # Create simplified tabs
     tab1, tab2, tab3 = st.tabs([
@@ -355,10 +363,7 @@ def display_results(data, config, cluster_id):
     with tab2:
         display_performance_metrics(indexing_metrics, search_metrics, cpu_metrics)
         st.markdown("---")
-        display_cost_analysis(
-            stats_analysis, indexing_metrics, search_metrics, 
-            cpu_metrics, ingest_to_query_ratio, total_cluster_memory, config
-        )
+        display_cost_analysis_new(cost_analysis, ingest_to_query_ratio, config)
     
     with tab3:
         display_charts(indexing_metrics, search_metrics, cpu_metrics)
@@ -555,6 +560,108 @@ def display_performance_metrics(indexing_metrics, search_metrics, cpu_metrics):
         else:
             st.warning("No CPU metrics available")
 
+def display_cost_analysis_new(cost_analysis, ingest_to_query_ratio, config):
+    """Display ES3 cost analysis using pre-calculated costs (NO MATH IN UI!)"""
+    st.header("💰 ES3 Cost Analysis")
+    
+    if not cost_analysis:
+        st.error("Cost analysis not available")
+        return
+    
+    # Extract pre-calculated values (no math here!)
+    ingest_tier = cost_analysis['ingest_tier']
+    search_tier = cost_analysis['search_tier']
+    storage_tier = cost_analysis['storage_tier']
+    total_cost = cost_analysis['total']
+    params = cost_analysis['parameters']
+    
+    # Display cost breakdown
+    col1, col2 = st.columns([1, 1])
+    
+    with col1:
+        st.subheader("💵 Monthly Cost Breakdown")
+        
+        # Cost metrics - just display the pre-calculated values
+        st.metric("Ingest Tier", f"${ingest_tier['monthly_cost']:.2f}", 
+                 help=f"{ingest_tier['vcus']:.1f} VCUs")
+        st.metric("Search Tier", f"${search_tier['monthly_cost']:.2f}", 
+                 help=f"{search_tier['vcus']:.1f} VCUs")
+        st.metric("Storage Tier", f"${storage_tier['monthly_cost']:.2f}", 
+                 help=f"{storage_tier['storage_gb']:.1f} GB")
+        st.metric("**Total**", f"**${total_cost['monthly_cost']:.2f}**")
+        
+        # Collapsible cost calculation details
+        with st.expander("📋 Cost Calculation Details"):
+            st.markdown(f"""
+            **Ingest Tier Calculation:**
+            - **Total Memory:** {params['total_memory_gb']:.1f} GB
+            - **Ingest Ratio:** {params['ingest_ratio_percent']:.3f} (raw: {ingest_to_query_ratio['numeric_ratio']:.1f}%)
+            - **Ingest Proportion:** {ingest_tier['proportion']:.3f} ({ingest_tier['proportion']*100:.1f}% of workload)
+            - **Avg-to-Peak Ratio:** {ingest_tier['avg_to_peak_ratio']:.3f}
+            - **CPU Utilization Factor:** {params['cpu_utilization_factor']:.3f}
+            - **VCUs:** {params['total_memory_gb']:.1f} × {ingest_tier['proportion']:.3f} × {ingest_tier['avg_to_peak_ratio']:.3f} × {params['cpu_utilization_factor']:.3f} = {ingest_tier['vcus']:.1f}
+            - **Monthly Cost:** {ingest_tier['vcus']:.1f} VCUs × ${params['vcu_hourly_cost']:.3f}/hour × 24h × 30 days = ${ingest_tier['monthly_cost']:.2f}
+            
+            **Search Tier Calculation:**
+            - **Search Proportion:** {search_tier['proportion']:.3f} ({search_tier['proportion']*100:.1f}% of workload)
+            - **Search Avg-to-Peak:** {search_tier['avg_to_peak_ratio']:.3f}
+            - **VCUs:** {params['total_memory_gb']:.1f} × {search_tier['proportion']:.3f} × {search_tier['avg_to_peak_ratio']:.3f} × {params['cpu_utilization_factor']:.3f} = {search_tier['vcus']:.1f}
+            - **Monthly Cost:** {search_tier['vcus']:.1f} VCUs × ${params['vcu_hourly_cost']:.3f}/hour × 24h × 30 days = ${search_tier['monthly_cost']:.2f}
+            
+            **Storage Tier Calculation:**
+            - **Primary Storage:** {storage_tier['storage_gb']:.1f} GB
+            - **Monthly Cost:** {storage_tier['storage_gb']:.1f} GB × ${params['storage_cost_per_gb_month']:.3f}/GB/month = ${storage_tier['monthly_cost']:.2f}
+            
+            **Key Factors:**
+            - **CPU Utilization Factor:** Adjusts VCU allocation based on actual CPU usage
+            - **Avg-to-Peak Ratio:** Accounts for workload variability (lower = more spiky)
+            - **Ingest/Search Split:** Based on actual cluster workload patterns
+            """)
+    
+    with col2:
+        # Cost pie chart using pre-calculated values
+        if total_cost['monthly_cost'] > 0:
+            costs = [ingest_tier['monthly_cost'], search_tier['monthly_cost'], storage_tier['monthly_cost']]
+            labels = ['Ingest Tier', 'Search Tier', 'Storage Tier']
+            
+            fig = px.pie(
+                values=costs,
+                names=labels,
+                title="Monthly Cost Distribution",
+                color_discrete_sequence=px.colors.qualitative.Set3
+            )
+            st.plotly_chart(fig, use_container_width=True)
+    
+    # Workload analysis
+    st.subheader("⚖️ Workload Analysis")
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.metric("Ingest to Query Ratio", ingest_to_query_ratio['ingest_ratio'])
+        st.info(ingest_to_query_ratio['interpretation'])
+        
+        # Collapsible workload calculation details
+        with st.expander("📋 Workload Analysis Details"):
+            st.markdown(f"""
+            **Ingest to Query Ratio Calculation:**
+            - **Time range:** 1 day (last 24 hours)
+            - **Data source:** `metrics-*:cluster-elasticsearch-*`
+            - **Filter:** `event.dataset = elasticsearch.node.stats`
+            - **Metrics:**
+              - Index time: `elasticsearch.node.stats.indices.indexing.index_time.ms`
+              - Query time: `elasticsearch.node.stats.indices.search.fetch_time.ms + query_time.ms`
+            - **Calculation:** `(total_index_time / total_query_time) × 100`
+            - **Aggregation:** Average across nodes and time
+            
+            **Result:** {ingest_to_query_ratio['numeric_ratio']:.1f}% ingest ratio
+            
+            **Interpretation:**
+            - **< 50%:** Query-heavy workload - prioritize search performance
+            - **50-100%:** Balanced workload - mixed indexing and querying
+            - **100-200%:** Ingest-heavy workload - prioritize indexing performance
+            - **> 200%:** Very ingest-heavy workload - maximum indexing capacity
+            """)
+
 def display_cost_analysis(stats_analysis, indexing_metrics, search_metrics, 
                          cpu_metrics, ingest_to_query_ratio, total_cluster_memory, config):
     """Display ES3 cost analysis"""
@@ -582,16 +689,20 @@ def display_cost_analysis(stats_analysis, indexing_metrics, search_metrics,
     vcu_hourly_cost = config['vcu_hourly_cost']
     storage_cost_per_gb_month = config['storage_cost_per_gb_month']
     
+    # Calculate correct proportions (same logic as fixed Python script)
+    # Convert ingest ratio to proper proportions to avoid negative costs
+    ingest_proportion = ingest_ratio_percent / (1.0 + ingest_ratio_percent)
+    search_proportion = 1.0 / (1.0 + ingest_ratio_percent)
+    
     # Ingest tier
-    ingest_tier_vcus = total_memory_gb * ingest_ratio_percent * avg_to_peak_ratio * cpu_utilization_factor
+    ingest_tier_vcus = total_memory_gb * ingest_proportion * avg_to_peak_ratio * cpu_utilization_factor
     ingest_monthly_cost = ingest_tier_vcus * vcu_hourly_cost * 24 * 30
     
     # Search tier
     if search_metrics:
         search_stats = search_metrics['cluster_stats']
-        query_ratio_percent = 1.0 - ingest_ratio_percent
         search_avg_to_peak_ratio = search_stats['avg_rate'] / search_stats['max_rate']
-        search_tier_vcus = total_memory_gb * query_ratio_percent * search_avg_to_peak_ratio * cpu_utilization_factor
+        search_tier_vcus = total_memory_gb * search_proportion * search_avg_to_peak_ratio * cpu_utilization_factor
         search_monthly_cost = search_tier_vcus * vcu_hourly_cost * 24 * 30
     else:
         search_tier_vcus = 0
@@ -626,16 +737,17 @@ def display_cost_analysis(stats_analysis, indexing_metrics, search_metrics,
             st.markdown(f"""
             **Ingest Tier Calculation:**
             - **Total Memory:** {total_memory_gb:.1f} GB
-            - **Ingest Ratio:** {ingest_ratio_percent:.1%} ({ingest_to_query_ratio['numeric_ratio']:.1f}%)
+            - **Ingest Ratio:** {ingest_ratio_percent:.3f} (raw: {ingest_to_query_ratio['numeric_ratio']:.1f}%)
+            - **Ingest Proportion:** {ingest_proportion:.3f} ({ingest_proportion*100:.1f}% of workload)
             - **Avg-to-Peak Ratio:** {avg_to_peak_ratio:.3f}
             - **CPU Utilization Factor:** {cpu_utilization_factor:.3f}
-            - **VCUs:** {total_memory_gb:.1f} × {ingest_ratio_percent:.3f} × {avg_to_peak_ratio:.3f} × {cpu_utilization_factor:.3f} = {ingest_tier_vcus:.1f}
+            - **VCUs:** {total_memory_gb:.1f} × {ingest_proportion:.3f} × {avg_to_peak_ratio:.3f} × {cpu_utilization_factor:.3f} = {ingest_tier_vcus:.1f}
             - **Monthly Cost:** {ingest_tier_vcus:.1f} VCUs × ${vcu_hourly_cost:.3f}/hour × 24h × 30 days = ${ingest_monthly_cost:.2f}
             
             **Search Tier Calculation:**
-            - **Query Ratio:** {1.0 - ingest_ratio_percent:.1%}
+            - **Search Proportion:** {search_proportion:.3f} ({search_proportion*100:.1f}% of workload)
             - **Search Avg-to-Peak:** {search_avg_to_peak_ratio if search_metrics else 'N/A'}
-            - **VCUs:** {total_memory_gb:.1f} × {1.0 - ingest_ratio_percent:.3f} × {search_avg_to_peak_ratio if search_metrics else 0:.3f} × {cpu_utilization_factor:.3f} = {search_tier_vcus:.1f}
+            - **VCUs:** {total_memory_gb:.1f} × {search_proportion:.3f} × {search_avg_to_peak_ratio if search_metrics else 0:.3f} × {cpu_utilization_factor:.3f} = {search_tier_vcus:.1f}
             - **Monthly Cost:** {search_tier_vcus:.1f} VCUs × ${vcu_hourly_cost:.3f}/hour × 24h × 30 days = ${search_monthly_cost:.2f}
             
             **Storage Tier Calculation:**

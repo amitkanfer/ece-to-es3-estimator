@@ -13,7 +13,7 @@ import sys
 from datetime import datetime, timezone, timedelta
 
 # Version information
-VERSION = "1.2.1"  # Added version display to CLI and Streamlit UI
+VERSION = "1.2.3"  # Separated calculation logic from UI - no math in Streamlit UI
 
 class ES3Estimator:
     def __init__(self, api_key, verbose=False):
@@ -1148,6 +1148,105 @@ FROM metrics-*:cluster-elasticsearch-*
             return "Very ingest-heavy workload - high indexing throughput needed"
         else:
             return "Extremely ingest-heavy workload - maximum indexing capacity required"
+
+    def calculate_costs(self, indexing_metrics, search_metrics, cpu_metrics, 
+                       ingest_to_query_ratio, total_cluster_memory, 
+                       vcu_hourly_cost=0.14, storage_cost_per_gb_month=0.047):
+        """
+        Calculate ES3 costs using the same logic as the CLI script
+        Returns a dictionary with all cost breakdowns
+        """
+        if not (total_cluster_memory and ingest_to_query_ratio and indexing_metrics):
+            return None
+            
+        try:
+            # Extract data
+            total_memory_gb = total_cluster_memory['numeric_memory_gb']
+            ingest_ratio_percent = ingest_to_query_ratio['numeric_ratio'] / 100.0
+            
+            # Get performance factors
+            indexing_stats = indexing_metrics['cluster_stats']
+            avg_to_peak_ratio = indexing_stats['avg_rate_mbps'] / indexing_stats['max_rate_mbps']
+            
+            # CPU utilization factor
+            cpu_utilization_factor = 1.0  # Default
+            if cpu_metrics and cpu_metrics.get('cluster_stats'):
+                cpu_stats = cpu_metrics['cluster_stats']
+                avg_cpu_usage = cpu_stats['avg_usage']
+                cpu_utilization_factor = avg_cpu_usage / 100.0 if avg_cpu_usage > 0 else 1.0
+            
+            # Calculate correct proportions (avoid negative costs)
+            ingest_proportion = ingest_ratio_percent / (1.0 + ingest_ratio_percent)
+            search_proportion = 1.0 / (1.0 + ingest_ratio_percent)
+            
+            # Ingest tier calculation
+            ingest_tier_vcus = total_memory_gb * ingest_proportion * avg_to_peak_ratio * cpu_utilization_factor
+            ingest_hourly_cost = ingest_tier_vcus * vcu_hourly_cost
+            ingest_daily_cost = ingest_hourly_cost * 24
+            ingest_monthly_cost = ingest_daily_cost * 30
+            
+            # Search tier calculation
+            search_tier_vcus = 0
+            search_hourly_cost = 0
+            search_daily_cost = 0
+            search_monthly_cost = 0
+            search_avg_to_peak_ratio = 0
+            
+            if search_metrics:
+                search_stats = search_metrics['cluster_stats']
+                search_avg_to_peak_ratio = search_stats['avg_rate'] / search_stats['max_rate']
+                search_tier_vcus = total_memory_gb * search_proportion * search_avg_to_peak_ratio * cpu_utilization_factor
+                search_hourly_cost = search_tier_vcus * vcu_hourly_cost
+                search_daily_cost = search_hourly_cost * 24
+                search_monthly_cost = search_daily_cost * 30
+            
+            # Storage tier calculation
+            storage_monthly_cost = 0
+            primary_storage_gb = 0
+            if indexing_metrics and 'total_storage_gb' in indexing_metrics:
+                primary_storage_gb = indexing_metrics['total_storage_gb']
+                storage_monthly_cost = primary_storage_gb * storage_cost_per_gb_month
+            
+            # Total cost
+            total_monthly_cost = ingest_monthly_cost + search_monthly_cost + storage_monthly_cost
+            
+            return {
+                'ingest_tier': {
+                    'vcus': ingest_tier_vcus,
+                    'hourly_cost': ingest_hourly_cost,
+                    'daily_cost': ingest_daily_cost,
+                    'monthly_cost': ingest_monthly_cost,
+                    'proportion': ingest_proportion,
+                    'avg_to_peak_ratio': avg_to_peak_ratio
+                },
+                'search_tier': {
+                    'vcus': search_tier_vcus,
+                    'hourly_cost': search_hourly_cost,
+                    'daily_cost': search_daily_cost,
+                    'monthly_cost': search_monthly_cost,
+                    'proportion': search_proportion,
+                    'avg_to_peak_ratio': search_avg_to_peak_ratio
+                },
+                'storage_tier': {
+                    'storage_gb': primary_storage_gb,
+                    'monthly_cost': storage_monthly_cost
+                },
+                'total': {
+                    'monthly_cost': total_monthly_cost
+                },
+                'parameters': {
+                    'total_memory_gb': total_memory_gb,
+                    'ingest_ratio_percent': ingest_ratio_percent,
+                    'cpu_utilization_factor': cpu_utilization_factor,
+                    'vcu_hourly_cost': vcu_hourly_cost,
+                    'storage_cost_per_gb_month': storage_cost_per_gb_month
+                }
+            }
+            
+        except Exception as e:
+            if self.verbose:
+                print(f"Cost calculation error: {e}")
+            return None
 
     def fetch_total_cluster_memory(self, cluster_id):
         """
