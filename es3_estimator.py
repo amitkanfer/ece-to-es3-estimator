@@ -12,6 +12,9 @@ import os
 import sys
 from datetime import datetime, timezone, timedelta
 
+# Version information
+VERSION = "1.2.1"  # Added version display to CLI and Streamlit UI
+
 class ES3Estimator:
     def __init__(self, api_key, verbose=False):
         self.api_key = api_key
@@ -1300,8 +1303,8 @@ def validate_inputs(cluster_id, api_key):
 def main():
     args = parse_arguments()
     
-    print("🚀 ES3 Cost Estimator - Production Ready")
-    print("="*50)
+    print(f"🚀 ES3 Cost Estimator - Production Ready (v{VERSION})")
+    print("="*60)
     
     # Get and validate inputs
     cluster_id = args.cluster_id

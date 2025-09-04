@@ -8,8 +8,8 @@ from datetime import datetime
 import io
 
 
-# Import our existing ES3Estimator class
-from es3_estimator import ES3Estimator
+# Import our existing ES3Estimator class and version
+from es3_estimator import ES3Estimator, VERSION
 
 # Page configuration
 st.set_page_config(
@@ -102,7 +102,7 @@ st.markdown("""
 
 def main():
     # Header
-    st.title("ES3 Cost Estimator")
+    st.title(f"ES3 Cost Estimator v{VERSION}")
     st.markdown("Analyze your Elasticsearch cluster and estimate ES3 serverless costs")
     
     # Sidebar for configuration
