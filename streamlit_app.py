@@ -315,7 +315,7 @@ def run_cluster_analysis(estimator, cluster_id, progress_placeholder):
         # Calculate costs using the Python script's logic (no math in UI!)
         cost_analysis = estimator.calculate_costs(
             indexing_metrics, search_metrics, cpu_metrics,
-            ingest_to_query_ratio, total_cluster_memory
+            ingest_to_query_ratio, total_cluster_memory, stats_analysis
         )
         
         # Store results

@@ -13,7 +13,7 @@ import sys
 from datetime import datetime, timezone, timedelta
 
 # Version information
-VERSION = "1.2.6"  # Fixed Streamlit UI to handle CPU stale data structure
+VERSION = "1.2.7"  # Fixed storage cost calculation in Streamlit UI
 
 class ES3Estimator:
     def __init__(self, api_key, verbose=False):
@@ -1438,7 +1438,7 @@ FROM metrics-*:cluster-elasticsearch-*
             return "Extremely ingest-heavy workload - maximum indexing capacity required"
 
     def calculate_costs(self, indexing_metrics, search_metrics, cpu_metrics, 
-                       ingest_to_query_ratio, total_cluster_memory, 
+                       ingest_to_query_ratio, total_cluster_memory, stats_analysis,
                        vcu_hourly_cost=0.14, storage_cost_per_gb_month=0.047):
         """
         Calculate ES3 costs using the same logic as the CLI script
@@ -1491,8 +1491,8 @@ FROM metrics-*:cluster-elasticsearch-*
             # Storage tier calculation
             storage_monthly_cost = 0
             primary_storage_gb = 0
-            if indexing_metrics and 'total_storage_gb' in indexing_metrics:
-                primary_storage_gb = indexing_metrics['total_storage_gb']
+            if stats_analysis and stats_analysis.get('latest_primary_storage_gb'):
+                primary_storage_gb = stats_analysis['latest_primary_storage_gb']
                 storage_monthly_cost = primary_storage_gb * storage_cost_per_gb_month
             
             # Total cost
